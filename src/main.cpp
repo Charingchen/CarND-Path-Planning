@@ -93,6 +93,10 @@ int main() {
 
           vector<double> next_x_vals;
           vector<double> next_y_vals;
+          // starting lane
+          int lane = 1;
+          double ref_val = 49.5; //MPH
+          int prev_size = previous_path_x.size();
 
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
@@ -103,12 +107,32 @@ int main() {
 //              next_x_vals.push_back(car_x+(dist_inc*i)*cos(deg2rad(car_yaw)));
 //              next_y_vals.push_back(car_y+(dist_inc*i)*sin(deg2rad(car_yaw)));
 //           }
-            int prev_size = previous_path_x.size();
+            
+            // Reading sensor fusion
+//            if (prev_size >  0) {
+//                car_s = end_path_s;
+//            }
+            
+            for(int i = 0; i < sensor_fusion.size();++i){
+                float d = sensor_fusion[i][6];
+                
+                if (d < (2+4*lane+2) && d > (2+4*lane-2) ){
+                    // Find out the speed of the car
+                    double v_x = sensor_fusion[i][3];
+                    double v_y = sensor_fusion[i][4];
+                    double target_mag_v = sqrt(v_x*v_x + v_y*v_y);
+                    
+                    double target_s = sensor_fusion[i][5];
+                    // Prediction the future
+                    
+                    if (target_s > car_s && target_s-car_s <20){
+                        ref_val = 30;
+                    }
+                }
+            }
+            
             vector<double> ptsx;
             vector<double> ptsy;
-            // starting lane
-            int lane = 1;
-            double ref_val = 49.5; //MPH
             
             double ref_x = car_x;
             double ref_y = car_y;

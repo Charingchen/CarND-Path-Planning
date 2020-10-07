@@ -50,11 +50,17 @@ int main() {
     map_waypoints_dx.push_back(d_x);
     map_waypoints_dy.push_back(d_y);
   }
+    
+    int lane = 1;
+    double ref_val = 0.0; //MPH
+   
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
+  h.onMessage([&ref_val,&lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
                &map_waypoints_dx,&map_waypoints_dy]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
+                  // starting lane
+    
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -93,10 +99,8 @@ int main() {
 
           vector<double> next_x_vals;
           vector<double> next_y_vals;
-          // starting lane
-          int lane = 1;
-          double ref_val = 49.5; //MPH
           int prev_size = previous_path_x.size();
+          bool too_close = false;
 
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
@@ -109,9 +113,9 @@ int main() {
 //           }
             
             // Reading sensor fusion
-//            if (prev_size >  0) {
-//                car_s = end_path_s;
-//            }
+            if (prev_size >  0) {
+                car_s = end_path_s;
+            }
             
             for(int i = 0; i < sensor_fusion.size();++i){
                 float d = sensor_fusion[i][6];
@@ -123,12 +127,19 @@ int main() {
                     double target_mag_v = sqrt(v_x*v_x + v_y*v_y);
                     
                     double target_s = sensor_fusion[i][5];
-                    // Prediction the future
-                    
-                    if (target_s > car_s && target_s-car_s <20){
-                        ref_val = 30;
+                    // Prediction the future location of the front car
+                    target_s += (double)prev_size * 0.02 * target_mag_v;
+                    if (target_s > car_s && target_s-car_s <30){
+                        too_close = true;
                     }
                 }
+            }
+            
+            if (too_close) {
+                ref_val -= 0.224;
+            }
+            else if (ref_val < 49.5){
+                ref_val += 0.224;
             }
             
             vector<double> ptsx;

@@ -29,12 +29,11 @@ public:
     // F: front RB: right back RF: right front LB: left back LF: left front
     string state;
     
-    
 //    void cal_mag_v (double v_x, double v_y);
     
     void cal_mag_v(double v_x, double v_y, double prev_size){
         double target_mag_v = sqrt(v_x*v_x + v_y*v_y);
-        // Prediction the future location of the front car
+        // Prediction the future location
         s += (double)prev_size * 0.02 * target_mag_v;
     }
 };
@@ -78,11 +77,12 @@ int main() {
     
     int lane = 1;
     double ref_val = 0.0; //MPH
+    int ego_state = 0;
 
    
 
   h.onMessage([&ref_val,&lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy]
+               &map_waypoints_dx,&map_waypoints_dy,&ego_state]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
                   
@@ -148,52 +148,76 @@ int main() {
                 // Find the car in the current lane in front of us
                 if (d < (2+4*lane+2) && d > (2+4*lane-2) ){
                     // Find out the speed of the car
-                    Vehicle front_car;
-                    
-                    double v_x = sensor_fusion[i][3];
-                    double v_y = sensor_fusion[i][4];
-                    double target_mag_v = sqrt(v_x*v_x + v_y*v_y);
-                    double target_s = sensor_fusion[i][5];
-                    // Prediction the future location of the front car
-                    target_s += (double)prev_size * 0.02 * target_mag_v;
+                    Vehicle car;
+                    car.lane = lane;
+                    car.s = sensor_fusion[i][5];
+                    car.cal_mag_v(sensor_fusion[i][3], sensor_fusion[i][4], (double) prev_size);
                     
                     // Enter 30 meters withn the front car
-                    if (target_s > car_s && target_s-car_s <30){
+                    if (car.s > car_s && car.s-car_s <30){
                         front_car_detected = true;
-                        
-                        front_car.lane = lane;
-                        front_car.s = target_s;
-                        front_car.v = target_mag_v;
-                        front_car.state = "F";
-                        vehicle_list.push_back(front_car);
+                        car.state = "F";
+                        vehicle_list.push_back(car);
                     }
                 }
                 // Find car in the right
                 else if (d < (2+4*(lane-1)+2) && d > (2+4*(lane-1)-2) && lane > 0){
-                    Vehicle right_car;
-                    right_car.lane = lane-1;
-                    right_car.s = sensor_fusion[i][5];
-                    right_car.state = "RF";
-                    right_car.cal_mag_v(sensor_fusion[i][3], sensor_fusion[i][4], (double) prev_size);
-                    vehicle_list.push_back(right_car);
+                    Vehicle car;
+                    car.lane = lane-1;
+                    car.s = sensor_fusion[i][5];
+                    car.cal_mag_v(sensor_fusion[i][3], sensor_fusion[i][4], (double) prev_size);
                     
+                    if (car.s > car_s && car.s - car_s <30){
+                        car.state = "RF";
+                        vehicle_list.push_back(car);
                     }
+                    else if (car.s <= car_s && car_s - car.s <30){
+                        car.state = "RB";
+                        vehicle_list.push_back(car);
+                    }
+                }
                 
                 // Find car in the left lane
                 else if (d < (2+4*(lane+1)+2) && d > (2+4*(lane+1)-2) && lane < 2){
+                    Vehicle car;
+                    car.lane = lane+1;
+                    car.s = sensor_fusion[i][5];
+                    car.cal_mag_v(sensor_fusion[i][3], sensor_fusion[i][4], (double) prev_size);
                     
+                    if (car.s > car_s && car.s - car_s <30){
+                        car.state = "LF";
+                        vehicle_list.push_back(car);
+                    }
+                    else if (car.s <= car_s && car_s - car.s <30){
+                        car.state = "LB";
+                        vehicle_list.push_back(car);
+                    }
                 }
+                
             }
-            
-            // State machine of decision making 
+            // State machine of decision making
+            switch (ego_state) {
+                // Start state, when there are no car in front
+                case 0:
+                    if (!front_car_detected){
+                        if (ref_val < 49.5){
+                            ref_val += 0.225;
+                        }
+                        break;
+                    }
+                    else{
+                        ego_state = 1; // Jump to next state
+                    }
+                    
+                case 1:
+                    // C
+                    break;
+                    
+                    
+            }
             
             // You can move this to the N Calculation loop
-            if (front_car_detected) {
-                ref_val -= 0.224;
-            }
-            else if (ref_val < 49.5){
-                ref_val += 0.224;
-            }
+            
             
             vector<double> ptsx;
             vector<double> ptsy;

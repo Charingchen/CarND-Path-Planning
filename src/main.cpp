@@ -14,6 +14,31 @@ using nlohmann::json;
 using std::string;
 using std::vector;
 
+class Vehicle{
+public:
+    // Constructors
+    Vehicle();
+    Vehicle(int lane, float s, float v, string state="CS");
+    
+    // Destructor
+    virtual ~Vehicle();
+    
+    int lane, s;
+    
+    float v;
+    // F: front RB: right back RF: right front LB: left back LF: left front
+    string state;
+    
+    
+//    void cal_mag_v (double v_x, double v_y);
+    
+    void cal_mag_v(double v_x, double v_y, double prev_size){
+        double target_mag_v = sqrt(v_x*v_x + v_y*v_y);
+        // Prediction the future location of the front car
+        s += (double)prev_size * 0.02 * target_mag_v;
+    }
+};
+
 int main() {
   uWS::Hub h;
 
@@ -53,14 +78,15 @@ int main() {
     
     int lane = 1;
     double ref_val = 0.0; //MPH
+
    
 
   h.onMessage([&ref_val,&lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
                &map_waypoints_dx,&map_waypoints_dy]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
-                  // starting lane
-    
+                  
+    vector<Vehicle> vehicle_list;
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -100,7 +126,7 @@ int main() {
           vector<double> next_x_vals;
           vector<double> next_y_vals;
           int prev_size = previous_path_x.size();
-          bool too_close = false;
+          bool front_car_detected = false;
 
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
@@ -119,23 +145,50 @@ int main() {
             
             for(int i = 0; i < sensor_fusion.size();++i){
                 float d = sensor_fusion[i][6];
-                
+                // Find the car in the current lane in front of us
                 if (d < (2+4*lane+2) && d > (2+4*lane-2) ){
                     // Find out the speed of the car
+                    Vehicle front_car;
+                    
                     double v_x = sensor_fusion[i][3];
                     double v_y = sensor_fusion[i][4];
                     double target_mag_v = sqrt(v_x*v_x + v_y*v_y);
-                    
                     double target_s = sensor_fusion[i][5];
                     // Prediction the future location of the front car
                     target_s += (double)prev_size * 0.02 * target_mag_v;
+                    
+                    // Enter 30 meters withn the front car
                     if (target_s > car_s && target_s-car_s <30){
-                        too_close = true;
+                        front_car_detected = true;
+                        
+                        front_car.lane = lane;
+                        front_car.s = target_s;
+                        front_car.v = target_mag_v;
+                        front_car.state = "F";
+                        vehicle_list.push_back(front_car);
                     }
+                }
+                // Find car in the right
+                else if (d < (2+4*(lane-1)+2) && d > (2+4*(lane-1)-2) && lane > 0){
+                    Vehicle right_car;
+                    right_car.lane = lane-1;
+                    right_car.s = sensor_fusion[i][5];
+                    right_car.state = "RF";
+                    right_car.cal_mag_v(sensor_fusion[i][3], sensor_fusion[i][4], (double) prev_size);
+                    vehicle_list.push_back(right_car);
+                    
+                    }
+                
+                // Find car in the left lane
+                else if (d < (2+4*(lane+1)+2) && d > (2+4*(lane+1)-2) && lane < 2){
+                    
                 }
             }
             
-            if (too_close) {
+            // State machine of decision making 
+            
+            // You can move this to the N Calculation loop
+            if (front_car_detected) {
                 ref_val -= 0.224;
             }
             else if (ref_val < 49.5){

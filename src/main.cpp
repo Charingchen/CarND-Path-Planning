@@ -38,6 +38,51 @@ public:
     }
 };
 
+//class FSM {
+//public:
+//    int state;
+//    bool slow_down;
+//
+//
+//};
+
+int calculate_cost(vector<Vehicle> sensor_reading, double car_s){
+    std::cout << "Total length of the sensor cars: " <<sensor_reading.size()<<std::endl;
+    for (int i = 0; i< sensor_reading.size(); ++i) {
+        if (sensor_reading[i].state == "RF") {
+            std::cout << "Right Front car: " <<std::endl;
+            std::cout << "s: " <<sensor_reading[i].s<<std::endl;
+            std::cout << "dist to our: " <<sensor_reading[i].s - car_s<<std::endl;
+            std::cout << "car Lane: " <<sensor_reading[i].lane<<std::endl;
+        }
+        else if (sensor_reading[i].state == "RB"){
+            std::cout << "Right Back car: " <<std::endl;
+            std::cout << "s: " <<sensor_reading[i].s<<std::endl;
+            std::cout << "dist to our: " <<sensor_reading[i].s - car_s<<std::endl;
+            std::cout << "car Lane: " <<sensor_reading[i].lane<<std::endl;
+        }
+        else if (sensor_reading[i].state == "LF"){
+            std::cout << "Left Front car: " <<std::endl;
+            std::cout << "s: " <<sensor_reading[i].s<<std::endl;
+            std::cout << "dist to our: " <<sensor_reading[i].s - car_s<<std::endl;
+            std::cout << "car Lane: " <<sensor_reading[i].lane<<std::endl;
+        }
+        else if (sensor_reading[i].state == "LB"){
+            std::cout << "Left Back car: " <<std::endl;
+            std::cout << "s: " <<sensor_reading[i].s<<std::endl;
+            std::cout << "dist to our: " <<sensor_reading[i].s - car_s<<std::endl;
+            std::cout << "car Lane: " <<sensor_reading[i].lane<<std::endl;
+        }
+        else {
+            std::cout << sensor_reading[i].state <<" car: " <<std::endl;
+            std::cout << "s: " <<sensor_reading[i].s<<std::endl;
+            std::cout << "dist to our: " <<sensor_reading[i].s - car_s<<std::endl;
+            std::cout << "car Lane: " <<sensor_reading[i].lane<<std::endl;
+        }
+    }
+    return 0;
+}
+
 int main() {
   uWS::Hub h;
 
@@ -78,10 +123,12 @@ int main() {
     int lane = 1;
     double ref_val = 0.0; //MPH
     int ego_state = 0;
+    bool slow_down = false;
+    bool change_lane_fail = false;
 
    
 
-  h.onMessage([&ref_val,&lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
+    h.onMessage([&change_lane_fail,&slow_down,&ref_val,&lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
                &map_waypoints_dx,&map_waypoints_dy,&ego_state]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
@@ -127,10 +174,6 @@ int main() {
             vector<double> next_y_vals;
             int prev_size = previous_path_x.size();
             bool front_car_detected = false;
-            bool front_right_detected = false;
-            bool front_left_detected = false;
-            bool rear_right_detected = false;
-            bool rear_left_detected = false;
             
             
 
@@ -166,8 +209,8 @@ int main() {
                         vehicle_list.push_back(car);
                     }
                 }
-                // Find car in the right
-                else if (d < (2+4*(lane-1)+2) && d > (2+4*(lane-1)-2) && lane > 0 && front_car_detected){
+                // Find car in the right, only record cars when there is a right lane and state is not lane keep
+                else if (d < (2+4*(lane-1)+2) && d > (2+4*(lane-1)-2) && lane > 0){
                     Vehicle car;
                     car.lane = lane-1;
                     car.s = sensor_fusion[i][5];
@@ -176,17 +219,15 @@ int main() {
                     if (car.s > car_s && car.s - car_s <30){
                         car.state = "RF";
                         vehicle_list.push_back(car);
-                        front_right_detected = true;
                     }
                     else if (car.s <= car_s && car_s - car.s <30){
                         car.state = "RB";
                         vehicle_list.push_back(car);
-                        rear_right_detected = true;
                     }
                 }
                 
                 // Find car in the left lane
-                else if (d < (2+4*(lane+1)+2) && d > (2+4*(lane+1)-2) && lane < 2 && front_car_detected){
+                else if (d < (2+4*(lane+1)+2) && d > (2+4*(lane+1)-2) && lane < 2 ){
                     Vehicle car;
                     car.lane = lane+1;
                     car.s = sensor_fusion[i][5];
@@ -195,45 +236,67 @@ int main() {
                     if (car.s > car_s && car.s - car_s <30){
                         car.state = "LF";
                         vehicle_list.push_back(car);
-                        front_left_detected = true;
                     }
                     else if (car.s <= car_s && car_s - car.s <30){
                         car.state = "LB";
                         vehicle_list.push_back(car);
-                        rear_left_detected = true;
                     }
                 }
                 
             }
-            // State machine of decision making
+           
+            // Decision making/jumping states
             switch (ego_state) {
-                // Start state, when there are no car in front
                 case 0:
-                    if (!front_car_detected){
-                        if (ref_val < 49.5){
-                            ref_val += 0.225;
+                    if (front_car_detected){
+                        // calculate the cost for left and right and decide which one to do
+                        int left_shift = calculate_cost(vehicle_list, car_s);
+                        
+                        
+                        // if there is not lane fail detect before, if there is, stay this state.
+                        if (!change_lane_fail) {
+                            if (left_shift == 1) {//1 left 2 right 0 not assigned
+                                // Jump to PLCL
+                                ego_state = 1;
+                            }
+                            else if (left_shift == 2){
+                                // Jumpe to PLCR
+                                ego_state = 2;
+                            }
+                            else {
+                                ego_state = 0; //stay
+                                slow_down = true;
+                            }
                         }
-                        break;
-                    }
-                    else{
-                        ego_state = 1; // Jump to next state
                     }
                     
-                case 1:
-                    // decide right or left turn
-                    if (!rear_left_detected && !front_left_detected && lane > 0){
-                        ego_state = 2; // shift left
+                    break;
+                    
+                default:
+                    break;
+            }
+            
+            // Output of the State machine
+            switch (ego_state) {
+                // Lane Keeping
+                case 0:
+                    if (ref_val < 49.5 && !slow_down){
+                        ref_val += 0.225;
                     }
-                    else if (!rear_right_detected &&!front_right_detected && lane < 2)
-                        ego_state = 3; //Shift right
+                    else if (slow_down && ref_val > 30){
+                        ref_val -= 0.225;
+                    }
                     else{
-                        //slow down
-                        ego_state = 4;
+                        slow_down = false;
                     }
                     break;
+                // Prepare for lane change left
+                case 1:
+                    std::cout << "Prepare for lane change left" << std::endl;
+                    break;
+                // Prepare for lane change right
                 case 2:
-                    lane -= 1;
-                    ego_state = 0;
+                    std::cout << "Prepare for lane change left" << std::endl;
                     break;
                 case 3:
                     lane += 1;

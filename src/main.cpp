@@ -17,11 +17,11 @@ using std::vector;
 class Vehicle{
 public:
     // Constructors
-    Vehicle();
-    Vehicle(int lane, float s, float v, string state="CS");
+//    Vehicle();
+//    Vehicle(int lane, float s, float v, string state="CS");
     
     // Destructor
-    virtual ~Vehicle();
+//    virtual ~Vehicle();
     
     int lane, s;
     
@@ -100,33 +100,39 @@ int main() {
         string event = j[0].get<string>();
         
         if (event == "telemetry") {
-          // j[1] is the data JSON object
-          
-          // Main car's localization Data
-          double car_x = j[1]["x"];
-          double car_y = j[1]["y"];
-          double car_s = j[1]["s"];
-          double car_d = j[1]["d"];
-          double car_yaw = j[1]["yaw"];
-          double car_speed = j[1]["speed"];
+            // j[1] is the data JSON object
 
-          // Previous path data given to the Planner
-          auto previous_path_x = j[1]["previous_path_x"];
-          auto previous_path_y = j[1]["previous_path_y"];
-          // Previous path's end s and d values 
-          double end_path_s = j[1]["end_path_s"];
-          double end_path_d = j[1]["end_path_d"];
+            // Main car's localization Data
+            double car_x = j[1]["x"];
+            double car_y = j[1]["y"];
+            double car_s = j[1]["s"];
+            double car_d = j[1]["d"];
+            double car_yaw = j[1]["yaw"];
+            double car_speed = j[1]["speed"];
 
-          // Sensor Fusion Data, a list of all other cars on the same side 
-          //   of the road.
-          auto sensor_fusion = j[1]["sensor_fusion"];
+            // Previous path data given to the Planner
+            auto previous_path_x = j[1]["previous_path_x"];
+            auto previous_path_y = j[1]["previous_path_y"];
+            // Previous path's end s and d values
+            double end_path_s = j[1]["end_path_s"];
+            double end_path_d = j[1]["end_path_d"];
 
-          json msgJson;
+            // Sensor Fusion Data, a list of all other cars on the same side
+            //   of the road.
+            auto sensor_fusion = j[1]["sensor_fusion"];
 
-          vector<double> next_x_vals;
-          vector<double> next_y_vals;
-          int prev_size = previous_path_x.size();
-          bool front_car_detected = false;
+            json msgJson;
+
+            vector<double> next_x_vals;
+            vector<double> next_y_vals;
+            int prev_size = previous_path_x.size();
+            bool front_car_detected = false;
+            bool front_right_detected = false;
+            bool front_left_detected = false;
+            bool rear_right_detected = false;
+            bool rear_left_detected = false;
+            
+            
 
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
@@ -161,7 +167,7 @@ int main() {
                     }
                 }
                 // Find car in the right
-                else if (d < (2+4*(lane-1)+2) && d > (2+4*(lane-1)-2) && lane > 0){
+                else if (d < (2+4*(lane-1)+2) && d > (2+4*(lane-1)-2) && lane > 0 && front_car_detected){
                     Vehicle car;
                     car.lane = lane-1;
                     car.s = sensor_fusion[i][5];
@@ -170,15 +176,17 @@ int main() {
                     if (car.s > car_s && car.s - car_s <30){
                         car.state = "RF";
                         vehicle_list.push_back(car);
+                        front_right_detected = true;
                     }
                     else if (car.s <= car_s && car_s - car.s <30){
                         car.state = "RB";
                         vehicle_list.push_back(car);
+                        rear_right_detected = true;
                     }
                 }
                 
                 // Find car in the left lane
-                else if (d < (2+4*(lane+1)+2) && d > (2+4*(lane+1)-2) && lane < 2){
+                else if (d < (2+4*(lane+1)+2) && d > (2+4*(lane+1)-2) && lane < 2 && front_car_detected){
                     Vehicle car;
                     car.lane = lane+1;
                     car.s = sensor_fusion[i][5];
@@ -187,10 +195,12 @@ int main() {
                     if (car.s > car_s && car.s - car_s <30){
                         car.state = "LF";
                         vehicle_list.push_back(car);
+                        front_left_detected = true;
                     }
                     else if (car.s <= car_s && car_s - car.s <30){
                         car.state = "LB";
                         vehicle_list.push_back(car);
+                        rear_left_detected = true;
                     }
                 }
                 
@@ -210,9 +220,34 @@ int main() {
                     }
                     
                 case 1:
-                    // C
+                    // decide right or left turn
+                    if (!rear_left_detected && !front_left_detected && lane > 0){
+                        ego_state = 2; // shift left
+                    }
+                    else if (!rear_right_detected &&!front_right_detected && lane < 2)
+                        ego_state = 3; //Shift right
+                    else{
+                        //slow down
+                        ego_state = 4;
+                    }
                     break;
-                    
+                case 2:
+                    lane -= 1;
+                    ego_state = 0;
+                    break;
+                case 3:
+                    lane += 1;
+                    ego_state = 0;
+                    break;
+                case 4:
+                    if (ref_val > 29.5){
+                        ref_val -= 0.225;
+                        break;
+                    }
+                    else if (!front_car_detected){
+                        ego_state = 0;
+                    }
+                    break;
                     
             }
             

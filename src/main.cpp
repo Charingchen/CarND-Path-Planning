@@ -25,7 +25,7 @@ public:
     
     int lane, s;
     
-    float v;
+    float v,dist_to_ego;
     // F: front RB: right back RF: right front LB: left back LF: left front
     string state;
     
@@ -47,37 +47,83 @@ public:
 //};
 
 int calculate_cost(vector<Vehicle> sensor_reading, double car_s){
-    std::cout << "Total length of the sensor cars: " <<sensor_reading.size()<<std::endl;
+//    std::cout << "Total length of the sensor cars: " <<sensor_reading.size()<<std::endl<<;
+    vector<double> right_front;
+    vector<double> left_front;
+    vector<double> right_back;
+    vector<double> left_back;
+    
+    bool rf_has_value,rb_has_value,lf_has_value,lb_has_value = false;
+    
     for (int i = 0; i< sensor_reading.size(); ++i) {
         if (sensor_reading[i].state == "RF") {
-            std::cout << "Right Front car: " <<std::endl;
-            std::cout << "s: " <<sensor_reading[i].s<<std::endl;
-            std::cout << "dist to our: " <<sensor_reading[i].s - car_s<<std::endl;
-            std::cout << "car Lane: " <<sensor_reading[i].lane<<std::endl;
+            right_front.push_back(sensor_reading[i].s-car_s);
+            rf_has_value = true;
         }
         else if (sensor_reading[i].state == "RB"){
-            std::cout << "Right Back car: " <<std::endl;
-            std::cout << "s: " <<sensor_reading[i].s<<std::endl;
-            std::cout << "dist to our: " <<sensor_reading[i].s - car_s<<std::endl;
-            std::cout << "car Lane: " <<sensor_reading[i].lane<<std::endl;
+            right_back.push_back(car_s-sensor_reading[i].s);
+            rb_has_value = true;
         }
         else if (sensor_reading[i].state == "LF"){
-            std::cout << "Left Front car: " <<std::endl;
-            std::cout << "s: " <<sensor_reading[i].s<<std::endl;
-            std::cout << "dist to our: " <<sensor_reading[i].s - car_s<<std::endl;
-            std::cout << "car Lane: " <<sensor_reading[i].lane<<std::endl;
+           left_front.push_back(sensor_reading[i].s-car_s);
+            lf_has_value = true;
         }
         else if (sensor_reading[i].state == "LB"){
-            std::cout << "Left Back car: " <<std::endl;
-            std::cout << "s: " <<sensor_reading[i].s<<std::endl;
-            std::cout << "dist to our: " <<sensor_reading[i].s - car_s<<std::endl;
-            std::cout << "car Lane: " <<sensor_reading[i].lane<<std::endl;
+           left_back.push_back(car_s-sensor_reading[i].s);
+            lb_has_value = true;
+        }
+    }
+    
+    //Check for if there is more than 1 car, if so sort it and take the closest/smallest value
+    std::sort(right_front.begin(), right_front.end());
+    std::sort(right_back.begin(), right_back.end());
+    std::sort(left_front.begin(), left_front.end());
+    std::sort(left_back.begin(), left_back.end());
+    
+    // calculate cost
+    double left_cost,right_cost = 0;
+    
+    // Process right lane
+    if (rf_has_value && rb_has_value) {
+        right_cost = (right_front[0] + right_back[0])/60;
+        std::cout << "right front dist:"<< right_front[0]<< "right back dist:"<< right_back[0]<< "right cost: "<< right_cost<< std::endl;
+    }
+    else if (rf_has_value){
+        right_cost = right_front[0]/30;
+        std::cout << "right front dist:"<< right_front[0]<< "right cost: "<< right_cost<< std::endl;
+    }
+    else if (rb_has_value){
+        right_cost = right_back[0]/30;
+        std::cout << "right back dist:"<< right_back[0]<< "right cost: "<< right_cost<< std::endl;
+    }
+    
+    // Process left lane
+    if (lb_has_value && lf_has_value) {
+        left_cost = (left_front[0] + left_back[0])/60;
+        std::cout << "left front dist:"<< left_front[0]<< "left back dist:"<< left_back[0]<< "left cost: "<< left_cost<< std::endl;
+    }
+    else if (lf_has_value){
+        left_cost = left_front[0]/30;
+        std::cout << "left front dist:"<< left_front[0]<< "left cost: "<< left_cost<< std::endl;
+    }
+    else if (lb_has_value){
+        left_cost = left_back[0]/30;
+        std::cout << "left back dist:"<< left_back[0]<< "left cost: "<< left_cost<< std::endl;
+    }
+    
+    if (right_cost == 0 && right_cost == 0){
+        // If both Lane not car, shift to right
+        return 2;
+    }
+    else{
+        if (right_cost < left_cost){
+            // more cost means good for now
+            //turn left:
+            return 1;
         }
         else {
-            std::cout << sensor_reading[i].state <<" car: " <<std::endl;
-            std::cout << "s: " <<sensor_reading[i].s<<std::endl;
-            std::cout << "dist to our: " <<sensor_reading[i].s - car_s<<std::endl;
-            std::cout << "car Lane: " <<sensor_reading[i].lane<<std::endl;
+            //trun right:
+            return 2;
         }
     }
     return 0;
@@ -250,23 +296,23 @@ int main() {
                 case 0:
                     if (front_car_detected){
                         // calculate the cost for left and right and decide which one to do
-                        int left_shift = calculate_cost(vehicle_list, car_s);
+                        int turn_result = calculate_cost(vehicle_list, car_s);
                         
                         
                         // if there is not lane fail detect before, if there is, stay this state.
                         if (!change_lane_fail) {
-                            if (left_shift == 1) {//1 left 2 right 0 not assigned
+                            if (turn_result == 1) {//1 left 2 right 0 not assigned
                                 // Jump to PLCL
                                 ego_state = 1;
                             }
-                            else if (left_shift == 2){
+                            else if (turn_result == 2){
                                 // Jumpe to PLCR
                                 ego_state = 2;
                             }
-                            else {
-                                ego_state = 0; //stay
-                                slow_down = true;
-                            }
+                        }
+                        else {
+                            ego_state = 0; //stay
+                            slow_down = true;
                         }
                     }
                     

@@ -46,7 +46,7 @@ public:
 //
 //};
 
-int calculate_cost(vector<Vehicle> sensor_reading, double car_s){
+int calculate_cost(vector<Vehicle> sensor_reading, double car_s, int lane){
 //    std::cout << "Total length of the sensor cars: " <<sensor_reading.size()<<std::endl<<;
     vector<double> right_front;
     vector<double> left_front;
@@ -111,22 +111,28 @@ int calculate_cost(vector<Vehicle> sensor_reading, double car_s){
         std::cout << "left back dist:"<< left_back[0]<< "left cost: "<< left_cost<< std::endl;
     }
     
-    if (right_cost == 0 && right_cost == 0){
+    
+    // Base on the cost decide which lane to change
+    if (right_cost == 0 && right_cost == 0 && lane < 2){
         // If both Lane not car, shift to right
         return 2;
     }
     else{
-        if (right_cost < left_cost){
+        if (right_cost < left_cost && lane > 0){
             // more cost means good for now
             //turn left:
             return 1;
         }
-        else {
-            //trun right:
+        else if (right_cost > left_cost && lane < 2){
+            //trun right: if the cost is same
             return 2;
         }
+        else {
+            // If there are equal don't change lane
+            return 0;
+        }
     }
-    return 0;
+    
 }
 
 int main() {
@@ -171,10 +177,12 @@ int main() {
     int ego_state = 0;
     bool slow_down = false;
     bool change_lane_fail = false;
+    int target_lane;
+    bool lane_change_set = false;
 
    
 
-    h.onMessage([&change_lane_fail,&slow_down,&ref_val,&lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
+    h.onMessage([&target_lane,&lane_change_set,&change_lane_fail,&slow_down,&ref_val,&lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
                &map_waypoints_dx,&map_waypoints_dy,&ego_state]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
@@ -290,36 +298,68 @@ int main() {
                 }
                 
             }
-           
+            
             // Decision making/jumping states
             switch (ego_state) {
                 case 0:
                     if (front_car_detected){
                         // calculate the cost for left and right and decide which one to do
-                        int turn_result = calculate_cost(vehicle_list, car_s);
-                        
+                        int turn_result = calculate_cost(vehicle_list, car_s,lane);
                         
                         // if there is not lane fail detect before, if there is, stay this state.
                         if (!change_lane_fail) {
                             if (turn_result == 1) {//1 left 2 right 0 not assigned
                                 // Jump to PLCL
+                                std::cout << "Trying left" << std::endl;
                                 ego_state = 1;
                             }
                             else if (turn_result == 2){
                                 // Jumpe to PLCR
+                                std::cout << "Trying right" << std::endl;
                                 ego_state = 2;
+                            }
+                            else{
+                                change_lane_fail = true;
                             }
                         }
                         else {
                             ego_state = 0; //stay
+                            std::cout << "slowing down	" << std::endl;
                             slow_down = true;
                         }
                     }
-                    
                     break;
                     
-                default:
+                // Prepare for lane change left
+                case 1:
+                    // check if the future position is still vaild for lane change on the left
+                    // and compare to the cost of distance to the front car
+                    ego_state = 3;
+                    target_lane = lane - 1;
+                    lane_change_set = false;
                     break;
+                // Prepare for lane change right
+                case 2:
+                    // check if the future position is still vaild for lane change on the right
+                    // and compare to the cost of distance to the front car
+                    ego_state = 4;
+                    target_lane = lane + 1 ;
+                    lane_change_set = false;
+                    break;
+                // Lane chagne to left
+                case 3:
+                    if (car_d < (2+4*target_lane+2) && car_d > (2+4*(target_lane)-2)) {
+                        ego_state = 0;
+                    }
+                
+                    break;
+                // Lane chagne to right
+                case 4:
+                    if (car_d < (2+4*target_lane+2) && car_d > (2+4*(target_lane)-2) ) {
+                        ego_state = 0;
+                    }
+                    break;
+                    
             }
             
             // Output of the State machine
@@ -334,6 +374,7 @@ int main() {
                     }
                     else{
                         slow_down = false;
+                        change_lane_fail = false;
                     }
                     break;
                 // Prepare for lane change left
@@ -342,21 +383,26 @@ int main() {
                     break;
                 // Prepare for lane change right
                 case 2:
-                    std::cout << "Prepare for lane change left" << std::endl;
+                    std::cout << "Prepare for lane change Right" << std::endl;
                     break;
+                // Change lane to left
                 case 3:
-                    lane += 1;
-                    ego_state = 0;
+                    // if lane change is not finished,
+                    if (!lane_change_set) {
+                        lane -= 1;
+                        lane_change_set = true;
+                    }
+                    std::cout << "Doing lane change left" << std::endl;
                     break;
+                // Change lane to right
                 case 4:
-                    if (ref_val > 29.5){
-                        ref_val -= 0.225;
-                        break;
+                    if (!lane_change_set) {
+                        lane += 1;
+                        lane_change_set = true;
                     }
-                    else if (!front_car_detected){
-                        ego_state = 0;
-                    }
+                    std::cout << "Doing lane change Right" << std::endl;
                     break;
+
                     
             }
             

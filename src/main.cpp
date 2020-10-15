@@ -25,14 +25,14 @@ public:
     
     int lane, s;
     
-    float v,dist_to_ego;
+    float target_mag_v;
     // F: front RB: right back RF: right front LB: left back LF: left front
     string state;
     
 //    void cal_mag_v (double v_x, double v_y);
     
     void cal_mag_v(double v_x, double v_y, double prev_size){
-        double target_mag_v = sqrt(v_x*v_x + v_y*v_y);
+         target_mag_v = sqrt(v_x*v_x + v_y*v_y);
         // Prediction the future location
         s += (double)prev_size * 0.02 * target_mag_v;
     }
@@ -46,70 +46,133 @@ public:
 //
 //};
 
-int calculate_cost(vector<Vehicle> sensor_reading, double car_s, int lane){
+int calculate_cost(vector<Vehicle> sensor_reading, double car_s, int lane, double ref_val,double detect_range = 30.0){
 //    std::cout << "Total length of the sensor cars: " <<sensor_reading.size()<<std::endl<<;
-    vector<double> right_front;
-    vector<double> left_front;
-    vector<double> right_back;
-    vector<double> left_back;
+    vector<int> RF_index;
+    vector<int> LF_index;
+    vector<int> RB_index;
+    vector<int> LB_index;
+    int front_car_index;
+    double self_speed = ref_val/2.24; // Convert mph to m/s
     
     bool rf_has_value,rb_has_value,lf_has_value,lb_has_value = false;
     
     for (int i = 0; i< sensor_reading.size(); ++i) {
         if (sensor_reading[i].state == "RF") {
-            right_front.push_back(sensor_reading[i].s-car_s);
+            RF_index.push_back(i);
             rf_has_value = true;
         }
         else if (sensor_reading[i].state == "RB"){
-            right_back.push_back(car_s-sensor_reading[i].s);
+            RB_index.push_back(i);
             rb_has_value = true;
         }
         else if (sensor_reading[i].state == "LF"){
-           left_front.push_back(sensor_reading[i].s-car_s);
+            LF_index.push_back(i);
             lf_has_value = true;
         }
         else if (sensor_reading[i].state == "LB"){
-           left_back.push_back(car_s-sensor_reading[i].s);
+            LB_index.push_back(i);
             lb_has_value = true;
+        }
+        else{
+            front_car_index = i;
         }
     }
     
     //Check for if there is more than 1 car, if so sort it and take the closest/smallest value
-    std::sort(right_front.begin(), right_front.end());
-    std::sort(right_back.begin(), right_back.end());
-    std::sort(left_front.begin(), left_front.end());
-    std::sort(left_back.begin(), left_back.end());
+    if (RB_index.size() > 0 || RF_index.size() >0 || LF_index.size()>0||LB_index.size()>0){
+        std::cout<< "Mutilpule car detected in front or back"<< std::endl;
+    }
     
     // calculate cost
-    double left_cost,right_cost = 0;
+    float right_front_cost,right_back_cost,left_front_cost,left_back_cost = 0;
     
     // Process right lane
-    if (rf_has_value && rb_has_value) {
-        right_cost = (right_front[0] + right_back[0])/60;
-        std::cout << "right front dist:"<< right_front[0]<< "right back dist:"<< right_back[0]<< "right cost: "<< right_cost<< std::endl;
-    }
-    else if (rf_has_value){
-        right_cost = right_front[0]/30;
-        std::cout << "right front dist:"<< right_front[0]<< "right cost: "<< right_cost<< std::endl;
-    }
-    else if (rb_has_value){
-        right_cost = right_back[0]/30;
-        std::cout << "right back dist:"<< right_back[0]<< "right cost: "<< right_cost<< std::endl;
+
+    if (rf_has_value) {
+        float front_car_speed = sensor_reading[RF_index[0]].target_mag_v;
+        float norm_front_speed = (front_car_speed - self_speed)/self_speed;
+        float dist_cost = 1 - (sensor_reading[RF_index[0]].s - car_s)/detect_range;
+        
+        if (norm_front_speed < 0 ){
+            right_front_cost = pow(0.5, norm_front_speed)*dist_cost;
+        }
+        
+        else {
+            right_front_cost =pow(0.5, norm_front_speed * 10)*dist_cost;
+        }
+        
+        std::cout << "RIGHT | Front cost: "<<right_front_cost << std::endl;
     }
     
+    if (rb_has_value) {
+        float back_car_speed = sensor_reading[RB_index[0]].target_mag_v;
+        float norm_front_speed = (back_car_speed - self_speed)/self_speed;
+        float dist_cost = 1 - (car_s - sensor_reading[RB_index[0]].s)/detect_range;
+        
+        
+        right_back_cost = pow(2, norm_front_speed * 4 )*dist_cost;
+        std::cout << "RIGHT | Back cost: "<<right_back_cost << std::endl;
+    }
+    
+    // Calculate total Right cost
+    float right_cost = right_front_cost + right_back_cost;
+    
     // Process left lane
-    if (lb_has_value && lf_has_value) {
-        left_cost = (left_front[0] + left_back[0])/60;
-        std::cout << "left front dist:"<< left_front[0]<< "left back dist:"<< left_back[0]<< "left cost: "<< left_cost<< std::endl;
+    
+    if (lf_has_value) {
+        float front_car_speed = sensor_reading[RF_index[0]].target_mag_v;
+        float norm_front_speed = (front_car_speed - self_speed)/self_speed;
+        float dist_cost = 1 - (sensor_reading[RF_index[0]].s - car_s)/detect_range;
+        
+        if (norm_front_speed < 0 ){
+            left_front_cost = pow(0.5, norm_front_speed)*dist_cost;
+        }
+        
+        else {
+            left_front_cost =pow(0.5, norm_front_speed * 10)*dist_cost;
+        }
+        
+        std::cout << "LEFT | Front cost: "<<left_front_cost << std::endl;
     }
-    else if (lf_has_value){
-        left_cost = left_front[0]/30;
-        std::cout << "left front dist:"<< left_front[0]<< "left cost: "<< left_cost<< std::endl;
+    
+    if (lb_has_value) {
+        float back_car_speed = sensor_reading[RB_index[0]].target_mag_v;
+        float norm_front_speed = (back_car_speed - self_speed)/self_speed;
+        float dist_cost = 1 - (car_s - sensor_reading[RB_index[0]].s)/detect_range;
+        
+        
+        left_back_cost = pow(2, norm_front_speed * 4 )*dist_cost;
+        std::cout << "LEFT | Back cost: "<<left_back_cost << std::endl;
     }
-    else if (lb_has_value){
-        left_cost = left_back[0]/30;
-        std::cout << "left back dist:"<< left_back[0]<< "left cost: "<< left_cost<< std::endl;
-    }
+    
+    // Calculate total left cost
+    float left_cost = left_front_cost + left_back_cost;
+    
+//    else if (rf_has_value){
+//        right_cost = right_front[0]/30;
+//        std::cout << "right front dist:"<< right_front[0]<< " cost: "<< right_cost<< std::endl;
+//    }
+//    else if (rb_has_value){
+//        right_cost = right_back[0]/30;
+//        std::cout << "right back dist:"<< right_back[0]<< " cost: "<< right_cost<< std::endl;
+//    }
+//    else {
+//        right_cost = 0;
+//    }
+//    // Process left lane
+//    if (lb_has_value && lf_has_value) {
+//        left_cost = (left_front[0] + left_back[0])/60;
+//        std::cout << "left front dist:"<< left_front[0]<< "left back dist:"<< left_back[0]<< "left cost: "<< left_cost<< std::endl;
+//    }
+//    else if (lf_has_value){
+//        left_cost = left_front[0]/30;
+//        std::cout << "left front dist:"<< left_front[0]<< "left cost: "<< left_cost<< std::endl;
+//    }
+//    else if (lb_has_value){
+//        left_cost = left_back[0]/30;
+//        std::cout << "left back dist:"<< left_back[0]<< "left cost: "<< left_cost<< std::endl;
+//    }
     
     
     // Base on the cost decide which lane to change

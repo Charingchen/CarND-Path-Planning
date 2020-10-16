@@ -23,7 +23,7 @@ public:
     // Destructor
 //    virtual ~Vehicle();
     
-    int lane, s;
+    int lane, s, future_s;
     
     float target_mag_v;
     // F: front RB: right back RF: right front LB: left back LF: left front
@@ -34,7 +34,7 @@ public:
     void cal_mag_v(double v_x, double v_y, double prev_size){
          target_mag_v = sqrt(v_x*v_x + v_y*v_y);
         // Prediction the future location
-        s += (double)prev_size * 0.02 * target_mag_v;
+        future_s = s + (double)prev_size * 0.02 * target_mag_v;
     }
 };
 
@@ -49,6 +49,22 @@ int find_lowest_index(vector<Vehicle> sensor_reading,vector<int> index){
         }
     }
     return index[new_index];
+}
+
+float follow_cost (vector<Vehicle> sensor_reading,int index, double self_speed,double car_s,bool front_cost, double detect_range = 30.0){
+    float target_car_speed = sensor_reading[index].target_mag_v;
+    float norm_speed = (target_car_speed - self_speed)/self_speed;
+    float dist_cost = 1 - abs(sensor_reading[index].s - car_s)/detect_range;
+    float cost;
+    
+    if (front_cost) {
+        cost = pow(2,-norm_speed) - norm_speed;
+    }
+    else{
+        cost = pow(2,norm_speed) + norm_speed;
+    }
+    return cost;
+
 }
 
 int calculate_cost(vector<Vehicle> sensor_reading, double car_s, int lane, double ref_val,double detect_range = 30.0){
@@ -97,98 +113,93 @@ int calculate_cost(vector<Vehicle> sensor_reading, double car_s, int lane, doubl
         LF_index[0] = find_lowest_index(sensor_reading, LF_index);
     }
     
-//    if (RB_index.size() > 1 || RF_index.size() >1 || LF_index.size()>1||LB_index.size()>1){
-//        std::cout<< "Mutilpule car detected in front or back"<< std::endl;
-//    }
-    
-    // calculate cost
     float right_front_cost,right_back_cost,left_front_cost,left_back_cost = 0.0;
     
     // Process right lane
-
     if (RF_index.size() > 0) {
-        float front_car_speed = sensor_reading[RF_index[0]].target_mag_v;
-        float norm_front_speed = (front_car_speed - self_speed)/self_speed;
-        float dist_cost = 1 - (sensor_reading[RF_index[0]].s - car_s)/detect_range;
         
-        if (norm_front_speed < 0 ){
-            right_front_cost = pow(0.5, norm_front_speed)*dist_cost;
-        }
+        right_front_cost = follow_cost(sensor_reading, RF_index[0], self_speed, car_s, true, detect_range);
         
-        else {
-            right_front_cost =pow(0.5, norm_front_speed * 10)*dist_cost;
-        }
-        
-        std::cout << "RIGHT | Front cost: "<<right_front_cost << std::endl;
+//        std::cout << "RIGHT | Front cost: "<<right_front_cost << std::endl;
     }
+    else right_front_cost = 0.0;
+
     
     if (RB_index.size()>0) {
-        float back_car_speed = sensor_reading[RB_index[0]].target_mag_v;
-        float norm_speed = (back_car_speed - self_speed)/self_speed;
-        float dist_cost = 1 - (car_s - sensor_reading[RB_index[0]].s)/detect_range;
         
-        
-        right_back_cost = pow(2, norm_speed * 4 )*dist_cost;
-        std::cout << "RIGHT | Back cost: "<<right_back_cost << std::endl;
+        right_back_cost = follow_cost(sensor_reading, RB_index[0], self_speed, car_s, false, detect_range);
+//        std::cout << "RIGHT | Back cost: "<<right_back_cost << std::endl;
     }
+    else right_back_cost = 0.0;
+
     
     // Calculate total Right cost
     std::cout<<"Right front cost: "<< right_front_cost<< std::endl;
     std::cout<<"Right back cost: "<< right_back_cost<< std::endl;
-    float right_cost = right_front_cost + right_back_cost;
+    float right_cost;
+    // Calculate total Right cost
+    if (right_front_cost != 0.0 && right_back_cost != 0.0 ) {
+        right_cost = (right_front_cost + right_back_cost)/2;
+    }
+    else  right_cost = right_front_cost + right_back_cost;
+    // Check if the right cost is real small
     if (fabs(right_cost)<0.001){
         right_cost = 0.0;
     }
     std::cout << "**** Total Right cost: "<<right_cost << std::endl;
     
     // Process left lane
-    
     if (LF_index.size()>0) {
-        float front_car_speed = sensor_reading[LF_index[0]].target_mag_v;
-        float norm_front_speed = (front_car_speed - self_speed)/self_speed;
-        float dist_cost = 1 - (sensor_reading[LF_index[0]].s - car_s)/detect_range;
-        
-        if (norm_front_speed < 0 ){
-            left_front_cost = pow(0.5, norm_front_speed)*dist_cost;
-        }
-        
-        else {
-            left_front_cost =pow(0.5, norm_front_speed * 10)*dist_cost;
-        }
-        
-        std::cout << "LEFT | Front cost: "<<left_front_cost << std::endl;
+        left_front_cost = follow_cost(sensor_reading, LF_index[0], self_speed, car_s, true, detect_range);
+//        std::cout << "LEFT | Front cost: "<<left_front_cost << std::endl;
     }
+    else left_front_cost = 0.0;
     
     if (LB_index.size()>0) {
-        float back_car_speed = sensor_reading[LB_index[0]].target_mag_v;
-        float norm_front_speed = (back_car_speed - self_speed)/self_speed;
-        float dist_cost = 1 - (car_s - sensor_reading[LB_index[0]].s)/detect_range;
-        
-        
-        left_back_cost = pow(2, norm_front_speed * 4 )*dist_cost;
-        std::cout << "LEFT | Back cost: "<<left_back_cost << std::endl;
+        left_back_cost = follow_cost(sensor_reading, LB_index[0], self_speed, car_s, false, detect_range);
+//        std::cout << "LEFT | Back cost: "<<left_back_cost << std::endl;
     }
-    
+    else left_back_cost =0.0;
+    float left_cost = 0.0;
     // Calculate total left cost
-    double left_cost = left_front_cost + left_back_cost;
+    if (left_back_cost != 0.0 && left_front_cost != 0.0 ) {
+        left_cost = (left_front_cost + left_back_cost)/2;
+    }
+    else  left_cost = left_front_cost + left_back_cost;
     
-    if (fabs(left_cost)<0.001){
+    if (fabs(left_cost)< 0.001){
         left_cost = 0.0;
     }
+    
+    std::cout<<"Left front cost: "<< left_front_cost<< std::endl;
+    std::cout<<"Left back cost: "<< left_back_cost<< std::endl;
     std::cout << "**** Total Left cost: "<<left_cost << std::endl;
     
     
+    // Calculate same lane front car cost
+    float front_cost = follow_cost(sensor_reading, front_car_index, self_speed, car_s, true, detect_range);
+    std::cout <<std::endl<< "***** front cost: "<<front_cost << std::endl;
     
     // Base on the cost decide which lane to change
-    if (right_cost == 0 && right_cost == 0 && lane < 2){
-        // If both Lane not car, shift to right
-        return 2;
+    // IF both lane has no cars
+    if (right_cost == 0 && right_cost == 0 ){
+        // shift to right if not at the right most lane
+        if (lane < 2) {
+            return 2;
+        }
+        // if at the right most lane, turn left
+        else if (lane == 2){
+            return 1;
+        }
     }
-    else if (right_cost > 1 && left_cost >1){
+    // if both cost are too high stay and slow down
+    else if ((right_cost > 1 && left_cost >1) || (front_cost < right_cost && front_cost < left_cost)){
         // DONT turn since it too risky
         return 0;
     }
+    
     else{
+        
         if (right_cost > left_cost && lane > 0){
             // more cost means good for now
             //turn left:
@@ -244,17 +255,17 @@ int main() {
     int lane = 1;
     double ref_val = 0.0; //MPH
     int ego_state = 0;
-    bool slow_down = false;
+//    bool slow_down = false;
     bool change_lane_fail = false;
     int target_lane;
     bool lane_change_set = false;
 
    
 
-    h.onMessage([&target_lane,&lane_change_set,&change_lane_fail,&slow_down,&ref_val,&lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy,&ego_state]
-              (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
-               uWS::OpCode opCode) {
+ h.onMessage([&target_lane,&lane_change_set,&change_lane_fail,&ref_val,&lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
+           &map_waypoints_dx,&map_waypoints_dy,&ego_state]
+          (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+           uWS::OpCode opCode) {
                   
     vector<Vehicle> vehicle_list;
     // "42" at the start of the message means there's a websocket message event.
@@ -297,6 +308,8 @@ int main() {
             vector<double> next_y_vals;
             int prev_size = previous_path_x.size();
             bool front_car_detected = false;
+            bool slow_down = false;
+            double target_follow_speed = 30.0;
             
             
 
@@ -330,6 +343,7 @@ int main() {
                         front_car_detected = true;
                         car.state = "F";
                         vehicle_list.push_back(car);
+                        target_follow_speed = car.target_mag_v * 2.24;
                     }
                 }
                 // Find car in the right, only record cars when there is a right lane and state is not lane keep
@@ -442,13 +456,14 @@ int main() {
                     if (ref_val < 49.5 && !slow_down){
                         ref_val += 0.225;
                     }
-                    else if (slow_down && ref_val > 30){
+                    else if (slow_down && ref_val > target_follow_speed){
                         ref_val -= 0.225;
                     }
-                    else if (ref_val <= 30){
+                    else if (ref_val <= target_follow_speed){
                         slow_down = false;
                         change_lane_fail = false;
-                        std::cout << "Reseting slow down and change_lanefail" << std::endl;
+                        std::cout << "Target_follow_speed: " << target_follow_speed<< std::endl;
+                        std::cout << "Reseting slow down and change_lane fail" << std::endl;
                     }
                     break;
                 // Prepare for lane change left

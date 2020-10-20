@@ -38,12 +38,6 @@ public:
     }
 };
 
-struct sensor_index{
-    vector<int> RF_index;
-    vector<int> LF_index;
-    vector<int> RB_index;
-    vector<int> LB_index;
-};
 
 class List_Vehicle{
 public:
@@ -52,6 +46,12 @@ public:
     vector<Vehicle> left_front;
     vector<Vehicle> left_back;
     Vehicle front;
+    double ego_future_s;
+    
+    void cal_future_ego_s (double ref_val, double car_s, double prev_size){
+        double self_speed = ref_val/2.24; // Convert mph to m/s
+        ego_future_s = car_s + (double)prev_size * 0.02 * self_speed;
+    }
     
     
     Vehicle find_lowest_index(vector<Vehicle> sensor_reading){
@@ -68,7 +68,7 @@ public:
     
     Vehicle get_closest_vehicle (vector<Vehicle> input_vehicle){
         if (input_vehicle.size() > 1){
-            std::cout<<std::endl<<"Multiple Reading detected"<<std::endl;
+            std::cout<<std::endl<<"Multiple Reading detected "<< input_vehicle[0].state<<std::endl;
             return find_lowest_index(input_vehicle);
         }
         else{
@@ -78,96 +78,91 @@ public:
 
 };
 
-int find_lowest_index(vector<Vehicle> sensor_reading,vector<int> index){
-    int temp_s = sensor_reading[index[0]].s;
-    int new_index = 0;
-    for (int j = 0;j < index.size();++j){
-        std::cout<<"index"<<j<<" s="<<sensor_reading[index[j]].s<<" Label:"<<sensor_reading[index[j]].state<<std::endl;
-        if (sensor_reading[index[j]].s <temp_s){
-            new_index = j;
-            temp_s =sensor_reading[index[j]].s;
-        }
-    }
-    return index[new_index];
-}
 
-float follow_cost (vector<Vehicle> sensor_reading,int index, double self_speed,double car_s,bool front_cost, double detect_range = 30.0){
-    float target_car_speed = sensor_reading[index].target_mag_v;
+
+float follow_cost (Vehicle sensor_reading, double self_speed,double car_s,bool front_cost,bool future_s = false, double detect_range = 30.0 ){
+    float target_car_speed = sensor_reading.target_mag_v;
     float norm_speed = (target_car_speed - self_speed)/self_speed;
-    float dist_cost = 1 - abs(sensor_reading[index].s - car_s)/detect_range;
-    float cost;
+    float dist_cost;
+    float speed_cost;
+    if (future_s){
+        // if uses future value of s, car_s need to be also future value
+        dist_cost = 1 - abs(sensor_reading.future_s - car_s)/detect_range;
+    }
+    
+    else{
+     dist_cost = 1 - abs(sensor_reading.s - car_s)/detect_range;
+    }
     
     if (front_cost) {
-        cost = pow(2,-norm_speed) - norm_speed;
+        speed_cost = pow(2,-norm_speed) - norm_speed;
     }
     else{
-        cost = pow(2,norm_speed) + norm_speed;
+        speed_cost = pow(2,norm_speed) + norm_speed;
     }
-    return cost;
+    return (speed_cost + dist_cost)/2;
 
 }
 
-int calculate_cost(vector<Vehicle> sensor_reading, double car_s, int lane, double ref_val,double detect_range = 30.0){
-//    std::cout << "Total length of the sensor cars: " <<sensor_reading.size()<<std::endl<<;
-    vector<int> RF_index;
-    vector<int> LF_index;
-    vector<int> RB_index;
-    vector<int> LB_index;
-    int front_car_index;
+double one_side_cost (vector<Vehicle> front, vector<Vehicle> back, double self_speed, double ego_s, double detect_range,bool future_s_flag){
+    List_Vehicle sample;
+    double front_cost,back_cost;
+    if (front.size()>0){
+        front_cost = follow_cost(sample.get_closest_vehicle(front), self_speed, ego_s, true, future_s_flag, detect_range);
+    }
+    else front_cost = 0.0;
+    
+    if (back.size()>0){
+        back_cost = follow_cost(sample.get_closest_vehicle(back), self_speed, ego_s, true, future_s_flag, detect_range);
+    }
+    else back_cost = 0.0;
+    // Calculate total Right cost
+    std::cout<<"front cost: "<< front_cost<< std::endl;
+    std::cout<<"back cost: "<< back_cost<< std::endl;
+    double cost;
+    // Calculate total Right cost
+    if (front_cost != 0.0 && back_cost != 0.0 ) {
+        cost = (front_cost + back_cost)/2;
+    }
+    else  cost = front_cost + back_cost;
+    // Check if the right cost is real small
+    if (fabs(cost)<0.001){
+        cost = 0.0;
+    }
+    std::cout << "**** Total cost: "<<cost << std::endl;
+    
+    return cost;
+    
+}
+
+
+int calculate_cost(List_Vehicle car_list, double car_s, int lane, double ref_val,bool future_s_flag = true, double detect_range = 30.0){
+
+    float right_front_cost,right_back_cost,left_front_cost,left_back_cost = 0.0;
     double self_speed = ref_val/2.24; // Convert mph to m/s
     
+    double ego_s;
     
-    for (int i = 0; i< sensor_reading.size(); ++i) {
-        if (sensor_reading[i].state == "RF") {
-            RF_index.push_back(i);
-        }
-        else if (sensor_reading[i].state == "RB"){
-            RB_index.push_back(i);
-        }
-        else if (sensor_reading[i].state == "LF"){
-            LF_index.push_back(i);
-        }
-        else if (sensor_reading[i].state == "LB"){
-            LB_index.push_back(i);
-        }
-        else{
-            front_car_index = i;
-        }
+    if (future_s_flag){
+        ego_s = car_list.ego_future_s;
     }
-    
-    //Check for if there is more than 1 car, if so sort it and take the closest/smallest value
-    if (RB_index.size()>1){
-        std::cout<<std::endl<<"Multiple RB detected"<<std::endl;
-        RB_index[0] = find_lowest_index(sensor_reading, RB_index);
+    else{
+        ego_s = car_s;
     }
-    if (RF_index.size()>1){
-        std::cout<<std::endl<<"Multiple RF detected"<<std::endl;
-        RF_index[0] = find_lowest_index(sensor_reading, RF_index);
-    }
-    if (LB_index.size()>1){
-        std::cout<<std::endl<<"Multiple LB detected"<<std::endl;
-        LB_index[0] = find_lowest_index(sensor_reading, LB_index);
-    }
-    if (LF_index.size()>1){
-        std::cout<<std::endl<<"Multiple LF detected"<<std::endl;
-        LF_index[0] = find_lowest_index(sensor_reading, LF_index);
-    }
-    
-    float right_front_cost,right_back_cost,left_front_cost,left_back_cost = 0.0;
     
     // Process right lane
-    if (RF_index.size() > 0) {
-        
-        right_front_cost = follow_cost(sensor_reading, RF_index[0], self_speed, car_s, true, detect_range);
+    // Calculate right front cost first, if there is right front car.
+    if (car_list.right_front.size() > 0) {
+        right_front_cost = follow_cost(car_list.get_closest_vehicle(car_list.right_front), self_speed, ego_s, true, future_s_flag, detect_range);
         
 //        std::cout << "RIGHT | Front cost: "<<right_front_cost << std::endl;
     }
     else right_front_cost = 0.0;
 
     
-    if (RB_index.size()>0) {
+    if (car_list.right_back.size()>0) {
         
-        right_back_cost = follow_cost(sensor_reading, RB_index[0], self_speed, car_s, false, detect_range);
+        right_back_cost= follow_cost(car_list.get_closest_vehicle(car_list.right_back), self_speed, ego_s, false, future_s_flag, detect_range);
 //        std::cout << "RIGHT | Back cost: "<<right_back_cost << std::endl;
     }
     else right_back_cost = 0.0;
@@ -189,17 +184,17 @@ int calculate_cost(vector<Vehicle> sensor_reading, double car_s, int lane, doubl
     std::cout << "**** Total Right cost: "<<right_cost << std::endl;
     
     // Process left lane
-    if (LF_index.size()>0) {
-        left_front_cost = follow_cost(sensor_reading, LF_index[0], self_speed, car_s, true, detect_range);
+    if (car_list.right_front.size()>0) {
+        left_front_cost = follow_cost(car_list.get_closest_vehicle(car_list.left_front), self_speed, ego_s, true, future_s_flag, detect_range);
 //        std::cout << "LEFT | Front cost: "<<left_front_cost << std::endl;
     }
     else left_front_cost = 0.0;
     
-    if (LB_index.size()>0) {
-        left_back_cost = follow_cost(sensor_reading, LB_index[0], self_speed, car_s, false, detect_range);
+    if (car_list.left_back.size()>0) {
+        left_back_cost = follow_cost(car_list.get_closest_vehicle(car_list.left_back), self_speed, ego_s, false, future_s_flag, detect_range);
 //        std::cout << "LEFT | Back cost: "<<left_back_cost << std::endl;
     }
-    else left_back_cost =0.0;
+    else left_back_cost = 0.0;
     float left_cost = 0.0;
     // Calculate total left cost
     if (left_back_cost != 0.0 && left_front_cost != 0.0 ) {
@@ -217,7 +212,7 @@ int calculate_cost(vector<Vehicle> sensor_reading, double car_s, int lane, doubl
     
     
     // Calculate same lane front car cost
-    float front_cost = follow_cost(sensor_reading, front_car_index, self_speed, car_s, true, detect_range);
+    float front_cost = follow_cost(car_list.front, self_speed, ego_s, true,future_s_flag, detect_range);
     std::cout <<std::endl<< "***** front cost: "<<front_cost << std::endl;
     
     // Base on the cost decide which lane to change
@@ -256,12 +251,13 @@ int calculate_cost(vector<Vehicle> sensor_reading, double car_s, int lane, doubl
     }
 }
 
-bool check_safe_to_turn (vector<Vehicle> sensor_reading, double car_s, int lane, double ref_val){
+bool safe_to_turn (){
     // Check position now to see if the gap is big
-    
+    return true;
     
     // Check the future position to see if the future path
 }
+
 int main() {
   uWS::Hub h;
 
@@ -377,6 +373,10 @@ int main() {
                 car_s = end_path_s;
             }
             
+            // Calculate future car_s
+            
+            vehicle_list.cal_future_ego_s(ref_val, car_s, prev_size);
+            
             for(int i = 0; i < sensor_fusion.size();++i){
                 float d = sensor_fusion[i][6];
                 // Find the car in the current lane in front of us
@@ -472,7 +472,7 @@ int main() {
                     // check if the future position is still vaild for lane change on the left
                     // and compare to the cost of distance to the front car
 
-                    if (check_safe_to_turn(vehicle_list,car_s,lane,ref_val)){
+                    if (safe_to_turn()){
                         ego_state = 3;
                         target_lane = lane - 1;
                         lane_change_set = false;
@@ -525,6 +525,9 @@ int main() {
                     }
                     else if (slow_down && ref_val > target_follow_speed){
                         ref_val -= 0.225;
+                        std::cout << "--ref val: " << ref_val<< std::endl;
+                        std::cout << "Target_follow_speed: " << target_follow_speed<< std::endl;
+                        
                     }
                     else if (ref_val <= target_follow_speed){
                         slow_down = false;

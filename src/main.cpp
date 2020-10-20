@@ -47,10 +47,13 @@ public:
     vector<Vehicle> left_back;
     Vehicle front;
     double ego_future_s;
+    double ego_s;
+    double ego_speed;
     
     void cal_future_ego_s (double ref_val, double car_s, double prev_size){
-        double self_speed = ref_val/2.24; // Convert mph to m/s
-        ego_future_s = car_s + (double)prev_size * 0.02 * self_speed;
+        ego_speed = ref_val/2.24; // Convert mph to m/s
+        ego_s = car_s;
+        ego_future_s = car_s + (double)prev_size * 0.02 * ego_speed;
     }
     
     
@@ -200,9 +203,49 @@ int calculate_cost(List_Vehicle car_list, double car_s, int lane, double ref_val
     }
 }
 
-bool safe_to_turn (){
+bool safe_to_turn (List_Vehicle car_list, bool right_turn = false ){
     // Check position now to see if the gap is big
-    return true;
+    if (!right_turn){
+        // check if it is within 15, if so, too risky to turn
+        
+        // Recalculate cost
+//        double right_cost = one_side_cost(car_list.right_front, car_list.right_back, car_list.ego_speed, car_list.ego_s, 30, false);
+        Vehicle right_front,right_back;
+        if (car_list.right_front.size()>0){
+            right_front = car_list.get_closest_vehicle(car_list.right_front);
+        }
+        else right_front.s = car_list.ego_s;
+        
+        if (car_list.right_back.size()>0){
+            right_back = car_list.get_closest_vehicle(car_list.right_back);
+        }
+        else right_back.s = car_list.ego_s;
+        
+        if (right_front.s - car_list.ego_s <= 15 || car_list.ego_s - right_back.s <=15){
+            return false;
+        }
+        else return true;
+        
+    }
+    else{
+        
+        Vehicle left_front,left_back;
+        if (car_list.left_front.size()>0){
+            left_front = car_list.get_closest_vehicle(car_list.left_front);
+        }
+        else left_front.s = car_list.ego_s;
+        
+        if (car_list.left_back.size()>0){
+            left_back = car_list.get_closest_vehicle(car_list.left_back);
+        }
+        else left_back.s = car_list.ego_s;
+        
+        if (left_front.s - car_list.ego_s <= 15 || car_list.ego_s - left_back.s <=15){
+            return false;
+        }
+        else return true;
+    }
+    
     
     // Check the future position to see if the future path
 }
@@ -421,7 +464,7 @@ int main() {
                     // check if the future position is still vaild for lane change on the left
                     // and compare to the cost of distance to the front car
 
-                    if (safe_to_turn()){
+                    if (safe_to_turn(vehicle_list) && fail_count >= 5){
                         ego_state = 3;
                         target_lane = lane - 1;
                         lane_change_set = false;
@@ -434,18 +477,38 @@ int main() {
                         
                         if (fail_count > 10){
                             slow_down = true;
+                            if (fail_count > 20){
+                                change_lane_fail = true;
+                                ego_state = 0;
+                            }
                         }
-                        
-                        
+                    
                     }
                     break;
                 // Prepare for lane change right
                 case 2:
                     // check if the future position is still vaild for lane change on the right
                     // and compare to the cost of distance to the front car
-                    ego_state = 4;
-                    target_lane = lane + 1 ;
-                    lane_change_set = false;
+                    if (safe_to_turn(vehicle_list)){
+                        ego_state = 4;
+                        target_lane = lane + 1;
+                        lane_change_set = false;
+                    }
+                    else{
+                        // stay in this state
+                        // Set time if timer expired change the change lane fail and jump back to state 0
+                        ego_state = 2;
+                        fail_count += 1;
+                        
+                        if (fail_count > 10){
+                            slow_down = true;
+                            if (fail_count > 20){
+                                change_lane_fail = true;
+                                ego_state = 0;
+                            }
+                        }
+                        
+                    }
                     break;
                 // Lane chagne to left
                 case 3:

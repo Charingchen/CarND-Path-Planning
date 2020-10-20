@@ -113,7 +113,7 @@ double one_side_cost (vector<Vehicle> front, vector<Vehicle> back, double self_s
     else front_cost = 0.0;
     
     if (back.size()>0){
-        back_cost = follow_cost(sample.get_closest_vehicle(back), self_speed, ego_s, true, future_s_flag, detect_range);
+        back_cost = follow_cost(sample.get_closest_vehicle(back), self_speed, ego_s, false, future_s_flag, detect_range);
     }
     else back_cost = 0.0;
     // Calculate total Right cost
@@ -129,7 +129,7 @@ double one_side_cost (vector<Vehicle> front, vector<Vehicle> back, double self_s
     if (fabs(cost)<0.001){
         cost = 0.0;
     }
-    std::cout << "**** Total cost: "<<cost << std::endl;
+//    std::cout << "**** Total cost: "<<cost << std::endl;
     
     return cost;
     
@@ -151,63 +151,12 @@ int calculate_cost(List_Vehicle car_list, double car_s, int lane, double ref_val
     }
     
     // Process right lane
-    // Calculate right front cost first, if there is right front car.
-    if (car_list.right_front.size() > 0) {
-        right_front_cost = follow_cost(car_list.get_closest_vehicle(car_list.right_front), self_speed, ego_s, true, future_s_flag, detect_range);
-        
-//        std::cout << "RIGHT | Front cost: "<<right_front_cost << std::endl;
-    }
-    else right_front_cost = 0.0;
-
     
-    if (car_list.right_back.size()>0) {
-        
-        right_back_cost= follow_cost(car_list.get_closest_vehicle(car_list.right_back), self_speed, ego_s, false, future_s_flag, detect_range);
-//        std::cout << "RIGHT | Back cost: "<<right_back_cost << std::endl;
-    }
-    else right_back_cost = 0.0;
-
-    
-    // Calculate total Right cost
-    std::cout<<"Right front cost: "<< right_front_cost<< std::endl;
-    std::cout<<"Right back cost: "<< right_back_cost<< std::endl;
-    float right_cost;
-    // Calculate total Right cost
-    if (right_front_cost != 0.0 && right_back_cost != 0.0 ) {
-        right_cost = (right_front_cost + right_back_cost)/2;
-    }
-    else  right_cost = right_front_cost + right_back_cost;
-    // Check if the right cost is real small
-    if (fabs(right_cost)<0.001){
-        right_cost = 0.0;
-    }
+    double right_cost = one_side_cost(car_list.right_front, car_list.right_back, self_speed, ego_s, detect_range, future_s_flag);
     std::cout << "**** Total Right cost: "<<right_cost << std::endl;
+  
     
-    // Process left lane
-    if (car_list.right_front.size()>0) {
-        left_front_cost = follow_cost(car_list.get_closest_vehicle(car_list.left_front), self_speed, ego_s, true, future_s_flag, detect_range);
-//        std::cout << "LEFT | Front cost: "<<left_front_cost << std::endl;
-    }
-    else left_front_cost = 0.0;
-    
-    if (car_list.left_back.size()>0) {
-        left_back_cost = follow_cost(car_list.get_closest_vehicle(car_list.left_back), self_speed, ego_s, false, future_s_flag, detect_range);
-//        std::cout << "LEFT | Back cost: "<<left_back_cost << std::endl;
-    }
-    else left_back_cost = 0.0;
-    float left_cost = 0.0;
-    // Calculate total left cost
-    if (left_back_cost != 0.0 && left_front_cost != 0.0 ) {
-        left_cost = (left_front_cost + left_back_cost)/2;
-    }
-    else  left_cost = left_front_cost + left_back_cost;
-    
-    if (fabs(left_cost)< 0.001){
-        left_cost = 0.0;
-    }
-    
-    std::cout<<"Left front cost: "<< left_front_cost<< std::endl;
-    std::cout<<"Left back cost: "<< left_back_cost<< std::endl;
+    double left_cost = one_side_cost(car_list.left_front, car_list.left_back, self_speed, ego_s, detect_range, future_s_flag);
     std::cout << "**** Total Left cost: "<<left_cost << std::endl;
     
     

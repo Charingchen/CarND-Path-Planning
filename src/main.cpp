@@ -38,6 +38,46 @@ public:
     }
 };
 
+struct sensor_index{
+    vector<int> RF_index;
+    vector<int> LF_index;
+    vector<int> RB_index;
+    vector<int> LB_index;
+};
+
+class List_Vehicle{
+public:
+    vector<Vehicle> right_front;
+    vector<Vehicle> right_back;
+    vector<Vehicle> left_front;
+    vector<Vehicle> left_back;
+    Vehicle front;
+    
+    
+    Vehicle find_lowest_index(vector<Vehicle> sensor_reading){
+        int temp_s = sensor_reading[0].s;
+        int new_index = 0;
+        for (int j = 0;j < sensor_reading.size();++j){
+            if (sensor_reading[j].s <temp_s){
+                new_index = j;
+                temp_s =sensor_reading[j].s;
+            }
+        }
+        return sensor_reading[new_index];
+    }
+    
+    Vehicle get_closest_vehicle (vector<Vehicle> input_vehicle){
+        if (input_vehicle.size() > 1){
+            std::cout<<std::endl<<"Multiple Reading detected"<<std::endl;
+            return find_lowest_index(input_vehicle);
+        }
+        else{
+            return input_vehicle[0];
+        }
+    }
+
+};
+
 int find_lowest_index(vector<Vehicle> sensor_reading,vector<int> index){
     int temp_s = sensor_reading[index[0]].s;
     int new_index = 0;
@@ -215,6 +255,13 @@ int calculate_cost(vector<Vehicle> sensor_reading, double car_s, int lane, doubl
         }
     }
 }
+
+bool check_safe_to_turn (vector<Vehicle> sensor_reading, double car_s, int lane, double ref_val){
+    // Check position now to see if the gap is big
+    
+    
+    // Check the future position to see if the future path
+}
 int main() {
   uWS::Hub h;
 
@@ -259,15 +306,15 @@ int main() {
     bool change_lane_fail = false;
     int target_lane;
     bool lane_change_set = false;
+    int fail_count = 0;
 
    
 
- h.onMessage([&target_lane,&lane_change_set,&change_lane_fail,&ref_val,&lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
+ h.onMessage([&fail_count,&target_lane,&lane_change_set,&change_lane_fail,&ref_val,&lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
            &map_waypoints_dx,&map_waypoints_dy,&ego_state]
           (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
            uWS::OpCode opCode) {
-                  
-    vector<Vehicle> vehicle_list;
+              
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -311,6 +358,8 @@ int main() {
             bool slow_down = false;
             double target_follow_speed = 30.0;
             
+            List_Vehicle vehicle_list;
+            
             
 
           /**
@@ -342,8 +391,9 @@ int main() {
                     if (car.s > car_s && car.s-car_s <30){
                         front_car_detected = true;
                         car.state = "F";
-                        vehicle_list.push_back(car);
                         target_follow_speed = car.target_mag_v * 2.24;
+                        vehicle_list.front = car;
+                        
                     }
                 }
                 // Find car in the right, only record cars when there is a right lane and state is not lane keep
@@ -355,11 +405,11 @@ int main() {
                     
                     if (car.s > car_s && car.s - car_s <30){
                         car.state = "RF";
-                        vehicle_list.push_back(car);
+                        vehicle_list.right_front.push_back(car);
                     }
                     else if (car.s <= car_s && car_s - car.s <30){
                         car.state = "RB";
-                        vehicle_list.push_back(car);
+                        vehicle_list.right_back.push_back(car);
                     }
                 }
                 
@@ -372,11 +422,11 @@ int main() {
                     
                     if (car.s > car_s && car.s - car_s <30){
                         car.state = "LF";
-                        vehicle_list.push_back(car);
+                        vehicle_list.left_front.push_back(car);
                     }
                     else if (car.s <= car_s && car_s - car.s <30){
                         car.state = "LB";
-                        vehicle_list.push_back(car);
+                        vehicle_list.left_back.push_back(car);
                     }
                 }
                 
@@ -396,11 +446,13 @@ int main() {
                                 // Jump to PLCL
                                 std::cout << "Trying left" << std::endl;
                                 ego_state = 1;
+                                fail_count = 0 ;
                             }
                             else if (turn_result == 2){
                                 // Jumpe to PLCR
                                 std::cout << "Trying right" << std::endl;
                                 ego_state = 2;
+                                fail_count = 0;
                             }
                             else{
                                 change_lane_fail = true;
@@ -419,9 +471,24 @@ int main() {
                 case 1:
                     // check if the future position is still vaild for lane change on the left
                     // and compare to the cost of distance to the front car
-                    ego_state = 3;
-                    target_lane = lane - 1;
-                    lane_change_set = false;
+
+                    if (check_safe_to_turn(vehicle_list,car_s,lane,ref_val)){
+                        ego_state = 3;
+                        target_lane = lane - 1;
+                        lane_change_set = false;
+                    }
+                    else{
+                        // stay in this state
+                        // Set time if timer expired change the change lane fail and jump back to state 0
+                        ego_state = 1;
+                        fail_count += 1;
+                        
+                        if (fail_count > 10){
+                            slow_down = true;
+                        }
+                        
+                        
+                    }
                     break;
                 // Prepare for lane change right
                 case 2:
@@ -469,6 +536,21 @@ int main() {
                 // Prepare for lane change left
                 case 1:
                     std::cout << "Prepare for lane change left" << std::endl;
+                    
+                    if (slow_down){
+                        if (ref_val > target_follow_speed){
+                            ref_val -= 0.225;
+                        }
+                        else{
+                            slow_down = false;
+                        }
+                    }
+                    else{
+                        if (ref_val < 49.5){
+                            ref_val += 0.225;
+                        }
+                    }
+                    
                     break;
                 // Prepare for lane change right
                 case 2:

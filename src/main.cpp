@@ -16,25 +16,16 @@ using std::vector;
 
 class Vehicle{
 public:
-    // Constructors
-//    Vehicle();
-//    Vehicle(int lane, float s, float v, string state="CS");
-    
-    // Destructor
-//    virtual ~Vehicle();
-    
-    int lane, s, future_s;
-    
-    float target_mag_v;
+    int lane, s, future_s, car_id;
+    float speed;
+    vector<int> cal_prev_size;
     // F: front RB: right back RF: right front LB: left back LF: left front
     string state;
     
-//    void cal_mag_v (double v_x, double v_y);
-    
     void cal_mag_v(double v_x, double v_y, double prev_size){
-         target_mag_v = sqrt(v_x*v_x + v_y*v_y);
+         speed = sqrt(v_x*v_x + v_y*v_y);
         // Prediction the future location
-        future_s = s + (double)prev_size * 0.02 * target_mag_v;
+        future_s = s + (double)prev_size * 0.02 * speed;
     }
 };
 
@@ -46,9 +37,82 @@ public:
     vector<Vehicle> left_front;
     vector<Vehicle> left_back;
     Vehicle front;
-    double ego_future_s;
-    double ego_s;
-    double ego_speed;
+    
+    double ego_future_s,ego_s,ego_speed;
+    double detect_range = 30;
+    double follow_speed = 30.0;
+   
+    
+    // Append new readings to the previouse. Handles if the new car appears in the readings
+    void append(vector<Vehicle> &object, Vehicle item){
+        bool found = false;
+        // Initialize object for the first time
+        if (object.size() == 0 ){
+            object.push_back(item);
+        }
+        // If there are items inside object, search for the same car id
+        else{
+            for (int i = 0; i < object.size(); ++i) {
+                // Same id found, update the infor base on the new item
+                if (object[i].car_id == item.car_id) {
+                    object[i].lane = item.lane;
+                    object[i].cal_prev_size.push_back(abs(item.s-object[i].s)/(0.02 * item.speed));
+                    object[i].s = item.s;
+                    object[i].speed = item.speed;
+                    object[i].future_s = item.future_s;
+                    found = true;
+                    // Jump out
+                    break;
+                }
+            }
+            // If not found, meaning new car appear in the reading
+            if (!found) {
+                object.push_back(item);
+            }
+        }
+    }
+    
+    // Find if there is sensor reading missing from the previous result. This handles missing sensor reading when the sensored car is too close
+    void trace_back (vector<Vehicle> &prev_reading, vector<Vehicle> now_reading, int prev_size){
+        bool found = false;
+        for (int i = 0; i < prev_reading.size(); ++i) {
+            for (int j = 0; j < now_reading.size(); ++j) {
+                if (prev_reading[i].car_id == now_reading[j].car_id){
+                    // Found and exit
+                    found = true;
+                    break;
+                }
+            }
+            if (!found){
+                // Check if the previous is moving outside the range or too close
+                // check  it is within the range now and in the future
+                if ((abs(prev_reading[i].s - ego_s) < detect_range) || (abs(prev_reading[i].future_s - ego_future_s) < detect_range) ){
+                    float averge_diff_size;
+                    int size = prev_reading[i].cal_prev_size.size();
+                    auto cal_prev_size = prev_reading[i].cal_prev_size;
+                    if (size>0){
+                       averge_diff_size = std::accumulate(cal_prev_size.begin(),cal_prev_size.end(), 0.0) / size;
+                    }
+                    //catch if the prev_s is empty
+                    else averge_diff_size = (float)prev_size;
+                    
+                    // Update prediction according to previous reading
+                    
+                    int predict_s = prev_reading[i].s + (averge_diff_size * 0.02 * prev_reading[i].speed);
+                    // assume it is still in the same lane
+                    prev_reading[i].s = predict_s;
+                    prev_reading[i].future_s = predict_s + (double)prev_size * 0.02 * prev_reading[i].speed;
+                    
+                }
+                // if it is outside the range, delete this
+                else{
+                    prev_reading.erase(prev_reading.begin()+i);
+                }
+            }
+            else found = false;
+        }
+        return;
+    }
     
     void cal_future_ego_s (double ref_val, double car_s, double prev_size){
         ego_speed = ref_val/2.24; // Convert mph to m/s
@@ -84,7 +148,7 @@ public:
 
 
 float follow_cost (Vehicle sensor_reading, double self_speed,double car_s,bool front_cost,bool future_s = false, double detect_range = 30.0 ){
-    float target_car_speed = sensor_reading.target_mag_v;
+    float target_car_speed = sensor_reading.speed;
     float norm_speed = (target_car_speed - self_speed)/self_speed;
     float dist_cost;
     float speed_cost;
@@ -180,7 +244,7 @@ int calculate_cost(List_Vehicle car_list, double car_s, int lane, double ref_val
         }
     }
     // if both cost are too high stay and slow down
-    else if ((right_cost > 1 && left_cost >1) || (front_cost < right_cost && front_cost < left_cost)){
+    else if ((right_cost > 1 && left_cost >1) || (front_cost < right_cost && front_cost < left_cost) || front_cost > 1){
         // DONT turn since it too risky
         return 0;
     }
@@ -333,10 +397,11 @@ int main() {
     int target_lane;
     bool lane_change_set = false;
     int fail_count = 0;
+    List_Vehicle vehicle_list;
 
    
 
- h.onMessage([&fail_count,&target_lane,&lane_change_set,&change_lane_fail,&ref_val,&lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
+ h.onMessage([&vehicle_list,&fail_count,&target_lane,&lane_change_set,&change_lane_fail,&ref_val,&lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
            &map_waypoints_dx,&map_waypoints_dy,&ego_state]
           (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
            uWS::OpCode opCode) {
@@ -382,31 +447,22 @@ int main() {
             int prev_size = previous_path_x.size();
             bool front_car_detected = false;
             bool slow_down = false;
-            double target_follow_speed = 30.0;
-            
-            List_Vehicle vehicle_list;
-            
-            
 
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
            *   sequentially every .02 seconds
            */
-//          double dist_inc = 0.5;
-//          for (int i = 0; i < 50; ++i) {
-//              next_x_vals.push_back(car_x+(dist_inc*i)*cos(deg2rad(car_yaw)));
-//              next_y_vals.push_back(car_y+(dist_inc*i)*sin(deg2rad(car_yaw)));
-//           }
             
-            // Reading sensor fusion
+           
             if (prev_size >  0) {
                 car_s = end_path_s;
             }
             
             // Calculate future car_s
-            
             vehicle_list.cal_future_ego_s(ref_val, car_s, prev_size);
-            
+            double detect_range = vehicle_list.detect_range;
+            vector<Vehicle> temp_RF,temp_RB,temp_LF,temp_LB;
+            // Reading sensor fusion
             for(int i = 0; i < sensor_fusion.size();++i){
                 float d = sensor_fusion[i][6];
                 // Find the car in the current lane in front of us
@@ -415,13 +471,14 @@ int main() {
                     Vehicle car;
                     car.lane = lane;
                     car.s = sensor_fusion[i][5];
+                    car.car_id = sensor_fusion[i][0];
                     car.cal_mag_v(sensor_fusion[i][3], sensor_fusion[i][4], (double) prev_size);
                     
                     // Enter 30 meters withn the front car
-                    if (car.s > car_s && car.s-car_s <30){
+                    if (car.s > car_s && car.s-car_s <detect_range){
                         front_car_detected = true;
                         car.state = "F";
-                        target_follow_speed = car.target_mag_v * 2.24;
+                        vehicle_list.follow_speed = car.speed * 2.24;
                         vehicle_list.front = car;
                         
                     }
@@ -431,15 +488,18 @@ int main() {
                     Vehicle car;
                     car.lane = lane+1;
                     car.s = sensor_fusion[i][5];
+                    car.car_id = sensor_fusion[i][0];
                     car.cal_mag_v(sensor_fusion[i][3], sensor_fusion[i][4], (double) prev_size);
                     
-                    if (car.s > car_s && car.s - car_s <30){
+                    if (car.s > car_s && car.s - car_s <detect_range){
                         car.state = "RF";
-                        vehicle_list.right_front.push_back(car);
+                        vehicle_list.append(vehicle_list.right_front, car);
+                        temp_RF.push_back(car);
                     }
-                    else if (car.s <= car_s && car_s - car.s <30){
+                    else if (car.s <= car_s && car_s - car.s <detect_range){
                         car.state = "RB";
-                        vehicle_list.right_back.push_back(car);
+                        vehicle_list.append(vehicle_list.right_back, car);
+                        temp_RB.push_back(car);
                     }
                 }
                 
@@ -448,19 +508,29 @@ int main() {
                     Vehicle car;
                     car.lane = lane-1;
                     car.s = sensor_fusion[i][5];
+                    car.car_id = sensor_fusion[i][0];
                     car.cal_mag_v(sensor_fusion[i][3], sensor_fusion[i][4], (double) prev_size);
                     
-                    if (car.s > car_s && car.s - car_s <30){
+                    if (car.s > car_s && car.s - car_s <detect_range){
                         car.state = "LF";
-                        vehicle_list.left_front.push_back(car);
+                        vehicle_list.append(vehicle_list.left_front, car);
+                        temp_LF.push_back(car);
                     }
-                    else if (car.s <= car_s && car_s - car.s <30){
+                    else if (car.s <= car_s && car_s - car.s <detect_range){
                         car.state = "LB";
-                        vehicle_list.left_back.push_back(car);
+                        vehicle_list.append(vehicle_list.left_back, car);
+                        temp_LB.push_back(car);
                     }
                 }
                 
             }
+            
+            // Trace back missing sensor reading and delete out of range items
+            vehicle_list.trace_back(vehicle_list.right_front, temp_RF, prev_size);
+            vehicle_list.trace_back(vehicle_list.right_back, temp_RB, prev_size);
+            vehicle_list.trace_back(vehicle_list.left_front, temp_LF, prev_size);
+            vehicle_list.trace_back(vehicle_list.left_back, temp_LB, prev_size);
+            
             
             // Decision making/jumping states
             switch (ego_state) {
@@ -574,57 +644,15 @@ int main() {
             switch (ego_state) {
                 // Lane Keeping
                 case 0:
-//                    if (ref_val < 49.5 && !slow_down){
-//                        ref_val += 0.225;
-//                    }
-//                    else if (slow_down && ref_val > target_follow_speed){
-//                        ref_val -= 0.225;
-//                        std::cout << "--ref val: " << ref_val<< std::endl;
-//                        std::cout << "Target_follow_speed: " << target_follow_speed<< std::endl;
-//
-//                    }
-//                    else if (ref_val <= target_follow_speed){
-//                        slow_down = false;
-//                        change_lane_fail = false;
-//
-//                        std::cout << "Reseting slow down and change_lane fail" << std::endl;
-//                    }
                     break;
                 // Prepare for lane change left
                 case 1:
                     std::cout << "Prepare for lane change left   Fail count:"<< fail_count << std::endl;
                     
-//                    if (slow_down){
-//                        if (ref_val > target_follow_speed){
-//                            ref_val -= 0.225;
-//                        }
-//                        else{
-//                            slow_down = false;
-//                        }
-//                    }
-//                    else{
-//                        if (ref_val < 49.5){
-//                            ref_val += 0.225;
-//                        }
-//                    }
-                    
                     break;
                 // Prepare for lane change right
                 case 2:
                     std::cout << "Prepare for lane change Right   Fail count:"<< fail_count << std::endl;
-//                    if (slow_down){
-//                        if (ref_val > target_follow_speed){
-//                            ref_val -= 0.225;
-//                        }
-//                        else{
-//                            slow_down = false;
-//                        }
-//                    }
-//                    else{
-//                        if (ref_val < 49.5){
-//                            ref_val += 0.225;
-//                        }
-//                    }
                     
                     break;
                 // Change lane to left
@@ -651,13 +679,13 @@ int main() {
             if (ref_val < 49.5 && !slow_down){
                 ref_val += 0.225;
             }
-            else if (slow_down && ref_val > target_follow_speed){
+            else if (slow_down && ref_val > vehicle_list.follow_speed){
                 ref_val -= 0.225;
                 std::cout << "--ref val: " << ref_val<< std::endl;
-                std::cout << "Target_follow_speed: " << target_follow_speed<< std::endl;
+                std::cout << "Target_follow_speed: " << vehicle_list.follow_speed<< std::endl;
                 
             }
-            else if (ref_val <= target_follow_speed){
+            else if (ref_val <= vehicle_list.follow_speed){
                 slow_down = false;
                 change_lane_fail = false;
                 

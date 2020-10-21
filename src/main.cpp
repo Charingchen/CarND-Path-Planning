@@ -205,7 +205,8 @@ int calculate_cost(List_Vehicle car_list, double car_s, int lane, double ref_val
 
 bool safe_to_turn (List_Vehicle car_list, bool right_turn = false ){
     // Check position now to see if the gap is big
-    if (!right_turn){
+    
+    if (right_turn){
         // check if it is within 15, if so, too risky to turn
         
         // Recalculate cost
@@ -214,17 +215,37 @@ bool safe_to_turn (List_Vehicle car_list, bool right_turn = false ){
         if (car_list.right_front.size()>0){
             right_front = car_list.get_closest_vehicle(car_list.right_front);
         }
-        else right_front.s = car_list.ego_s;
+        else {
+            right_front.s = car_list.ego_s + 100;
+            right_front.future_s =car_list.ego_future_s + 100;
+        }
         
         if (car_list.right_back.size()>0){
             right_back = car_list.get_closest_vehicle(car_list.right_back);
         }
-        else right_back.s = car_list.ego_s;
+        else {
+            right_back.s = car_list.ego_s - 100;
+            right_back.future_s =car_list.ego_future_s - 100;
+        }
         
-        if (right_front.s - car_list.ego_s <= 15 || car_list.ego_s - right_back.s <=15){
+        if (right_front.s - car_list.ego_s <= 15 || car_list.ego_s - right_back.s <=15|| right_front.future_s - car_list.ego_future_s <=15 || car_list.ego_future_s - right_back.future_s <= 15){
+            std::cout << "ego s:"<< car_list.ego_s << " front s:"<< right_front.s <<" back s:" << right_back.s<< std::endl;
+            std::cout << "ego future s:"<< car_list.ego_s << " front future s:"<< right_front.s <<" back future s:" << right_back.s<< std::endl;
+             std::cout << "!!!! NOT SAFE ON Right!!!!!" << std::endl;
+            
             return false;
         }
-        else return true;
+        else{
+            double side_cost = one_side_cost(car_list.right_front, car_list.right_back, car_list.ego_speed, car_list.ego_future_s, 30, true);
+            double front_cost = follow_cost(car_list.front, car_list.ego_speed, car_list.ego_future_s, true);
+            std::cout << "Recalculate cost  side cost:"<< side_cost<<" front cost:"<< front_cost << std::endl;
+            if (side_cost < front_cost){
+                return true;
+            }
+            else return false;
+        }
+        
+
         
     }
     else{
@@ -233,21 +254,38 @@ bool safe_to_turn (List_Vehicle car_list, bool right_turn = false ){
         if (car_list.left_front.size()>0){
             left_front = car_list.get_closest_vehicle(car_list.left_front);
         }
-        else left_front.s = car_list.ego_s;
-        
+        else {
+            left_front.s = car_list.ego_s + 100;
+            left_front.future_s = car_list.ego_future_s + 100;
+        }
         if (car_list.left_back.size()>0){
             left_back = car_list.get_closest_vehicle(car_list.left_back);
         }
-        else left_back.s = car_list.ego_s;
+        else {
+            left_back.s = car_list.ego_s - 100;
+            left_back.future_s = car_list.ego_future_s - 100;
+        }
         
-        if (left_front.s - car_list.ego_s <= 15 || car_list.ego_s - left_back.s <=15){
+        if (left_front.s - car_list.ego_s <= 15 || car_list.ego_s - left_back.s <=15 || left_front.future_s - car_list.ego_future_s <=15 || car_list.ego_future_s - left_back.future_s <= 15){
+            std::cout << "ego s:"<< car_list.ego_s << " front s:"<< left_front.s <<" back s:" << left_back.s<< std::endl;
+            std::cout << "ego s:"<< car_list.ego_s << " front s:"<< left_front.s <<" back s:" << left_back.s<< std::endl;
+            std::cout << "!!!! NOT SAFE ON Left!!!!!" << std::endl;
             return false;
         }
-        else return true;
+        else{
+            double side_cost = one_side_cost(car_list.left_front, car_list.left_back, car_list.ego_speed, car_list.ego_future_s, 30, true);
+            double front_cost = follow_cost(car_list.front, car_list.ego_speed, car_list.ego_future_s, true);
+            std::cout << "Recalculate cost  side cost:"<< side_cost<<" front cost:"<< front_cost << std::endl;
+            if (side_cost < front_cost){
+                return true;
+            }
+            else return false;
+        }
+    
     }
+    // Check the cost and front cost again
     
     
-    // Check the future position to see if the future path
 }
 
 int main() {
@@ -463,11 +501,13 @@ int main() {
                 case 1:
                     // check if the future position is still vaild for lane change on the left
                     // and compare to the cost of distance to the front car
-
-                    if (safe_to_turn(vehicle_list) && fail_count >= 5){
+                    
+                    if (safe_to_turn(vehicle_list) && fail_count >= 3){
+                        std::cout << "Safe to turn left" << std::endl;
                         ego_state = 3;
                         target_lane = lane - 1;
                         lane_change_set = false;
+                        fail_count = 0;
                     }
                     else{
                         // stay in this state
@@ -489,10 +529,12 @@ int main() {
                 case 2:
                     // check if the future position is still vaild for lane change on the right
                     // and compare to the cost of distance to the front car
-                    if (safe_to_turn(vehicle_list)){
+                    if (safe_to_turn(vehicle_list,true) && fail_count >=5){
+                        std::cout << "Safe to turn right" << std::endl;
                         ego_state = 4;
                         target_lane = lane + 1;
                         lane_change_set = false;
+                        fail_count = 0;
                     }
                     else{
                         // stay in this state
@@ -532,44 +574,58 @@ int main() {
             switch (ego_state) {
                 // Lane Keeping
                 case 0:
-                    if (ref_val < 49.5 && !slow_down){
-                        ref_val += 0.225;
-                    }
-                    else if (slow_down && ref_val > target_follow_speed){
-                        ref_val -= 0.225;
-                        std::cout << "--ref val: " << ref_val<< std::endl;
-                        std::cout << "Target_follow_speed: " << target_follow_speed<< std::endl;
-                        
-                    }
-                    else if (ref_val <= target_follow_speed){
-                        slow_down = false;
-                        change_lane_fail = false;
-                        std::cout << "Target_follow_speed: " << target_follow_speed<< std::endl;
-                        std::cout << "Reseting slow down and change_lane fail" << std::endl;
-                    }
+//                    if (ref_val < 49.5 && !slow_down){
+//                        ref_val += 0.225;
+//                    }
+//                    else if (slow_down && ref_val > target_follow_speed){
+//                        ref_val -= 0.225;
+//                        std::cout << "--ref val: " << ref_val<< std::endl;
+//                        std::cout << "Target_follow_speed: " << target_follow_speed<< std::endl;
+//
+//                    }
+//                    else if (ref_val <= target_follow_speed){
+//                        slow_down = false;
+//                        change_lane_fail = false;
+//
+//                        std::cout << "Reseting slow down and change_lane fail" << std::endl;
+//                    }
                     break;
                 // Prepare for lane change left
                 case 1:
-                    std::cout << "Prepare for lane change left" << std::endl;
+                    std::cout << "Prepare for lane change left   Fail count:"<< fail_count << std::endl;
                     
-                    if (slow_down){
-                        if (ref_val > target_follow_speed){
-                            ref_val -= 0.225;
-                        }
-                        else{
-                            slow_down = false;
-                        }
-                    }
-                    else{
-                        if (ref_val < 49.5){
-                            ref_val += 0.225;
-                        }
-                    }
+//                    if (slow_down){
+//                        if (ref_val > target_follow_speed){
+//                            ref_val -= 0.225;
+//                        }
+//                        else{
+//                            slow_down = false;
+//                        }
+//                    }
+//                    else{
+//                        if (ref_val < 49.5){
+//                            ref_val += 0.225;
+//                        }
+//                    }
                     
                     break;
                 // Prepare for lane change right
                 case 2:
-                    std::cout << "Prepare for lane change Right" << std::endl;
+                    std::cout << "Prepare for lane change Right   Fail count:"<< fail_count << std::endl;
+//                    if (slow_down){
+//                        if (ref_val > target_follow_speed){
+//                            ref_val -= 0.225;
+//                        }
+//                        else{
+//                            slow_down = false;
+//                        }
+//                    }
+//                    else{
+//                        if (ref_val < 49.5){
+//                            ref_val += 0.225;
+//                        }
+//                    }
+                    
                     break;
                 // Change lane to left
                 case 3:
@@ -591,6 +647,23 @@ int main() {
 
                     
             }
+            
+            if (ref_val < 49.5 && !slow_down){
+                ref_val += 0.225;
+            }
+            else if (slow_down && ref_val > target_follow_speed){
+                ref_val -= 0.225;
+                std::cout << "--ref val: " << ref_val<< std::endl;
+                std::cout << "Target_follow_speed: " << target_follow_speed<< std::endl;
+                
+            }
+            else if (ref_val <= target_follow_speed){
+                slow_down = false;
+                change_lane_fail = false;
+                
+                std::cout << "Reseting slow down and change_lane fail" << std::endl;
+            }
+            
             
             // You can move this to the N Calculation loop
             

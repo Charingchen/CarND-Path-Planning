@@ -19,7 +19,7 @@ public:
     int lane, s, future_s, car_id;
     float speed;
     // Add a flag to indicate if this car is assigned or not
-    bool write = false;
+    bool initialize = false;
     vector<int> cal_prev_size;
     // F: front RB: right back RF: right front LB: left back LF: left front
     string state;
@@ -184,7 +184,7 @@ float follow_cost (Vehicle sensor_reading,List_Vehicle lv, bool front_cost, bool
     float dist_cost;
     float speed_cost;
     // Check if the sensor readings is written or not
-    if (!sensor_reading.write) {
+    if (!sensor_reading.initialize) {
         return 0.0;
     }
     
@@ -328,12 +328,12 @@ bool safe_to_turn (List_Vehicle lv, bool right_turn = false ){
         right_back = lv.locate_car(lv.key_rb);
         
         // if there is no readings written, add 100 in order to return safe to tunr later in the calculations
-        if (!right_front.write){
+        if (!right_front.initialize){
             right_front.s = lv.ego_s + 100;
             right_front.future_s =lv.ego_future_s + 100;
         }
         
-        if (!right_back.write){
+        if (!right_back.initialize){
             right_back.s = lv.ego_s - 100;
             right_back.future_s =lv.ego_future_s - 100;
         }
@@ -367,12 +367,12 @@ bool safe_to_turn (List_Vehicle lv, bool right_turn = false ){
         left_back = lv.locate_car(lv.key_lb);
         
         // if there is no readings written, add 100 in order to return safe to tunr later in the calculations
-        if (!left_front.write){
+        if (!left_front.initialize){
             left_front.s = lv.ego_s + 100;
             left_front.future_s =lv.ego_future_s + 100;
         }
         
-        if (!left_back.write){
+        if (!left_back.initialize){
             left_back.s = lv.ego_s - 100;
             left_back.future_s =lv.ego_future_s - 100;
         }
@@ -515,7 +515,7 @@ int main() {
                 if (d < (2+4*lane+2) && d > (2+4*lane-2) ){
                     // Find out the speed of the car
                     Vehicle car;
-                    car.write = true;
+                    car.initialize = true;
                     car.lane = lane;
                     car.s = sensor_fusion[i][5];
                     car.car_id = sensor_fusion[i][0];
@@ -533,7 +533,7 @@ int main() {
                 // Find car in the right, only record cars when there is a right lane and state is not lane keep
                 else if (d < (2+4*(lane+1)+2) && d > (2+4*(lane+1)-2) && lane > 0){
                     Vehicle car;
-                    car.write = true;
+                    car.initialize = true;
                     car.lane = lane+1;
                     car.s = sensor_fusion[i][5];
                     car.car_id = sensor_fusion[i][0];
@@ -554,7 +554,7 @@ int main() {
                 // Find car in the left lane
                 else if (d < (2+4*(lane-1)+2) && d > (2+4*(lane-1)-2) && lane < 2 ){
                     Vehicle car;
-                    car.write = true;
+                    car.initialize = true;
                     car.lane = lane-1;
                     car.s = sensor_fusion[i][5];
                     car.car_id = sensor_fusion[i][0];

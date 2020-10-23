@@ -121,10 +121,12 @@ public:
                 }
                 // if it is outside the range, delete this
                 else{
+                    std::cout<<"carID: REMOVING Out of bound -- ID:"<< sensor_readings[i].car_id<<" "<<sensor_readings[i].state <<" Lane:"<< sensor_readings[i].lane <<" s"<<sensor_readings[i].s<<" Future s "<< sensor_readings[i].future_s <<std::endl;
+                    
                     sensor_readings.erase(sensor_readings.begin()+i);
                     
                     // potential bug for not removing correctly
-                    std::cout<<"carID: REMOVING Out of bound -- ID:"<< sensor_readings[i].car_id<<" "<<sensor_readings[i].state <<" Lane:"<< sensor_readings[i].lane <<" s"<<sensor_readings[i].s<<" Future s "<< sensor_readings[i].future_s <<std::endl;
+                    
                 }
             }
             else found = false;

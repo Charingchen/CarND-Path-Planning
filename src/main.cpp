@@ -18,6 +18,8 @@ class Vehicle{
 public:
     int lane, s, future_s, car_id;
     float speed;
+    // Add a flag to indicate if this car is assigned or not
+    bool write = false;
     vector<int> cal_prev_size;
     // F: front RB: right back RF: right front LB: left back LF: left front
     string state;
@@ -32,11 +34,18 @@ public:
 
 class List_Vehicle{
 public:
-    vector<Vehicle> right_front;
-    vector<Vehicle> right_back;
-    vector<Vehicle> left_front;
-    vector<Vehicle> left_back;
-    vector<Vehicle> front;
+    
+    vector<Vehicle> sensor_readings;
+    
+    std::map<string, string> keylookup;
+    
+    
+    string key_f = "F";
+    string key_rb = "RB";
+    string key_rf = "RF";
+    string key_lb = "LB";
+    string key_lf = "LF";
+
     
     double ego_future_s,ego_s,ego_speed;
     double detect_range = 30;
@@ -44,23 +53,23 @@ public:
    
     
     // Append new readings to the previouse. Handles if the new car appears in the readings
-    void append(vector<Vehicle> &object, Vehicle item){
+    void append(Vehicle item){
         bool found = false;
-        // Initialize object for the first time
-        if (object.size() == 0 ){
-            object.push_back(item);
+        // Initialize Sensor Readings for the first time
+        if (sensor_readings.size() == 0 ){
+            sensor_readings.push_back(item);
             std::cout<<"carID: First Adding -- ID:"<< item.car_id<<" "<<item.state << " Lane:"<< item.lane <<" s"<<item.s<<" Future s "<< item.future_s <<std::endl;
         }
         // If there are items inside object, search for the same car id
         else{
-            for (int i = 0; i < object.size(); ++i) {
+            for (int i = 0; i < sensor_readings.size(); ++i) {
                 // Same id found, update the infor base on the new item
-                if (object[i].car_id == item.car_id) {
-                    object[i].lane = item.lane;
-                    object[i].cal_prev_size.push_back(abs(item.s-object[i].s)/(0.02 * item.speed));
-                    object[i].s = item.s;
-                    object[i].speed = item.speed;
-                    object[i].future_s = item.future_s;
+                if (sensor_readings[i].car_id == item.car_id) {
+                    sensor_readings[i].lane = item.lane;
+                    sensor_readings[i].cal_prev_size.push_back(abs(item.s-sensor_readings[i].s)/(0.02 * item.speed));
+                    sensor_readings[i].s = item.s;
+                    sensor_readings[i].speed = item.speed;
+                    sensor_readings[i].future_s = item.future_s;
                     found = true;
                     
                     std::cout<<"carID: UPDATE ID:"<<item.car_id<<" "<<item.state << " Lane:"<< item.lane <<" s"<<item.s<<" Future s "<< item.future_s <<"ego size:"<<ego_s <<std::endl;
@@ -70,18 +79,18 @@ public:
             }
             // If not found, meaning new car appear in the reading
             if (!found) {
-                object.push_back(item);
+                sensor_readings.push_back(item);
                 std::cout<<"carID: Adding -- ID:"<< item.car_id<<" "<<item.state << " Lane:"<< item.lane <<" s"<<item.s<<" Future s "<< item.future_s <<"ego size:"<<ego_s <<std::endl;
             }
         }
     }
     
     // Find if there is sensor reading missing from the previous result. This handles missing sensor reading when the sensored car is too close
-    void trace_back (vector<Vehicle> &prev_reading, vector<Vehicle> now_reading, int prev_size){
+    void trace_back (vector<Vehicle> now_reading, int prev_size){
         bool found = false;
-        for (int i = 0; i < prev_reading.size(); ++i) {
+        for (int i = 0; i < sensor_readings.size(); ++i) {
             for (int j = 0; j < now_reading.size(); ++j) {
-                if (prev_reading[i].car_id == now_reading[j].car_id){
+                if (sensor_readings[i].car_id == now_reading[j].car_id){
                     // Found and exit
                     found = true;
                     break;
@@ -90,10 +99,10 @@ public:
             if (!found){
                 // Check if the previous is moving outside the range or too close
                 // check  it is within the range now and in the future
-                if ((abs(prev_reading[i].s - ego_s) < detect_range) || (abs(prev_reading[i].future_s - ego_future_s) < detect_range) ){
+                if ((abs(sensor_readings[i].s - ego_s) < detect_range) || (abs(sensor_readings[i].future_s - ego_future_s) < detect_range) ){
                     float averge_diff_size;
-                    int size = prev_reading[i].cal_prev_size.size();
-                    auto cal_prev_size = prev_reading[i].cal_prev_size;
+                    int size = sensor_readings[i].cal_prev_size.size();
+                    auto cal_prev_size = sensor_readings[i].cal_prev_size;
                     if (size>0){
                        averge_diff_size = std::accumulate(cal_prev_size.begin(),cal_prev_size.end(), 0.0) / size;
                     }
@@ -101,21 +110,21 @@ public:
                     else averge_diff_size = (float)prev_size;
                     
                     // Update prediction according to previous reading
-                    int predict_s = prev_reading[i].s + (averge_diff_size * 0.02 * prev_reading[i].speed);
+                    int predict_s = sensor_readings[i].s + (averge_diff_size * 0.02 * sensor_readings[i].speed);
                     // assume it is still in the same lane
-                    int prev_s = prev_reading[i].s;
+                    int prev_s = sensor_readings[i].s;
                     
-                    prev_reading[i].s = predict_s;
-                    prev_reading[i].future_s = predict_s + (double)prev_size * 0.02 * prev_reading[i].speed;
-                    std::cout<<"carID: predicting lost reading -- ID:"<< prev_reading[i].car_id<< " "<<prev_reading[i].state <<" Lane:"<< prev_reading[i].lane <<" prev s:"<< prev_s <<" predicting s "<<predict_s<<" Future s "<< prev_reading[i].future_s <<"ego size:"<<ego_s <<std::endl;
+                    sensor_readings[i].s = predict_s;
+                    sensor_readings[i].future_s = predict_s + (double)prev_size * 0.02 * sensor_readings[i].speed;
+                    std::cout<<"carID: predicting lost reading -- ID:"<< sensor_readings[i].car_id<< " "<<sensor_readings[i].state <<" Lane:"<< sensor_readings[i].lane <<" prev s:"<< prev_s <<" predicting s "<<predict_s<<" Future s "<< sensor_readings[i].future_s <<"ego size:"<<ego_s <<std::endl;
                     
                 }
                 // if it is outside the range, delete this
                 else{
-                    prev_reading.erase(prev_reading.begin()+i);
+                    sensor_readings.erase(sensor_readings.begin()+i);
                     
                     // potential bug for not removing correctly
-                    std::cout<<"carID: REMOVING Out of bound -- ID"<< prev_reading[i].car_id<<" "<<prev_reading[i].state <<" Lane:"<< prev_reading[i].lane <<" s"<<prev_reading[i].s<<" Future s "<< prev_reading[i].future_s <<std::endl;
+                    std::cout<<"carID: REMOVING Out of bound -- ID"<< sensor_readings[i].car_id<<" "<<sensor_readings[i].state <<" Lane:"<< sensor_readings[i].lane <<" s"<<sensor_readings[i].s<<" Future s "<< sensor_readings[i].future_s <<std::endl;
                 }
             }
             else found = false;
@@ -129,8 +138,18 @@ public:
         ego_future_s = car_s + (double)prev_size * 0.02 * ego_speed;
     }
     
-    void locate_position (){
-        
+    Vehicle locate_car (string key_state){
+        Vehicle output;
+        output.s = 10000;
+
+        for (int i = 0;i < sensor_readings.size();++i) {
+            if (sensor_readings[i].state == key_state){
+                if (sensor_readings[i].s < output.s) {
+                    output = sensor_readings[i];
+                }
+            }
+        }
+        return output;
     }
     
     
@@ -164,6 +183,11 @@ float follow_cost (Vehicle sensor_reading,List_Vehicle lv, bool front_cost, bool
     float norm_speed = (target_car_speed - lv.ego_speed)/lv.ego_speed;
     float dist_cost;
     float speed_cost;
+    // Check if the sensor readings is written or not
+    if (!sensor_reading.write) {
+        return 0.0;
+    }
+    
     if (future_s){
         // if uses future value of s, car_s need to be also future value
         dist_cost = 1 - abs(sensor_reading.future_s - lv.ego_future_s)/lv.detect_range;
@@ -183,19 +207,21 @@ float follow_cost (Vehicle sensor_reading,List_Vehicle lv, bool front_cost, bool
 
 }
 
-double one_side_cost (vector<Vehicle> front, vector<Vehicle> back, List_Vehicle lv,bool future_s_flag){
-    
-    double front_cost,back_cost;
-    if (front.size()>0){
-        front_cost = follow_cost(lv.get_closest_vehicle(front), lv, true,future_s_flag);
+double one_side_cost (List_Vehicle lv, bool future_s_flag, bool right = false){
+    Vehicle front, back;
+    if (right) {
+        front = lv.locate_car(lv.key_rf);
+        back = lv.locate_car(lv.key_rb);
     }
-    else front_cost = 0.0;
-    
-    if (back.size()>0){
-        back_cost = follow_cost(lv.get_closest_vehicle(back), lv,  false, future_s_flag);
+    else{
+        front = lv.locate_car(lv.key_lf);
+        back = lv.locate_car(lv.key_lb);
     }
-    else back_cost = 0.0;
-    // Calculate total Right cost
+    
+    float front_cost = follow_cost(front, lv, true, future_s_flag);
+    float back_cost = follow_cost(back, lv, false, future_s_flag);
+    
+    // Calculate total cost
     std::cout<<"front cost: "<< front_cost<< std::endl;
     std::cout<<"back cost: "<< back_cost<< std::endl;
     double cost;
@@ -215,42 +241,42 @@ double one_side_cost (vector<Vehicle> front, vector<Vehicle> back, List_Vehicle 
 }
 
 
-int calculate_cost(List_Vehicle &car_list, int lane, double ref_val,bool future_s_flag = true){
+int calculate_cost(List_Vehicle &lv, int lane, double ref_val,bool future_s_flag = true){
 
     float right_front_cost,right_back_cost,left_front_cost,left_back_cost = 0.0;
-    double self_speed = car_list.ego_speed; // Convert mph to m/s
+    double self_speed = lv.ego_speed; // Convert mph to m/s
     
     double ego_s;
     
     if (future_s_flag){
-        ego_s = car_list.ego_future_s;
+        ego_s = lv.ego_future_s;
     }
     else{
-        ego_s = car_list.ego_s;
+        ego_s = lv.ego_s;
     }
     
     // Process right lane
     
-    double right_cost = one_side_cost(car_list.right_front, car_list.right_back,car_list, future_s_flag);
+    double right_cost = one_side_cost(lv, future_s_flag,true);
     std::cout << "***** Total Right cost: "<<right_cost << std::endl;
   
     
-    double left_cost = one_side_cost(car_list.left_front, car_list.left_back,car_list,future_s_flag);
+    double left_cost = one_side_cost(lv,future_s_flag);
     std::cout << "***** Total Left cost: "<<left_cost << std::endl;
     
     
     // Calculate same lane front car cost
-    Vehicle front_reading = car_list.get_closest_vehicle(car_list.front);
-    float front_cost = follow_cost(front_reading, car_list, true,future_s_flag);
+    Vehicle front_reading = lv.locate_car(lv.key_f);
+    float front_cost = follow_cost(front_reading, lv, true,future_s_flag);
     std::cout << "***** front cost: "<<front_cost << std::endl<< std::endl;
     
     // Write to follow speed
     if (front_cost > 1){
         // Convert m/s back to mph, if front cost too high, set half of the front car speed
-        car_list.follow_speed =front_reading.speed * 2.24 * 0.5;
+        lv.follow_speed =front_reading.speed * 2.24 * 0.5;
     }
     else {
-        car_list.follow_speed =front_reading.speed * 2.24 ;
+        lv.follow_speed =front_reading.speed * 2.24 ;
     }
     // Base on the cost decide which lane to change
     // IF both lane has no cars
@@ -290,78 +316,77 @@ int calculate_cost(List_Vehicle &car_list, int lane, double ref_val,bool future_
 }
 
 
-bool safe_to_turn (List_Vehicle car_list, bool right_turn = false ){
-    // Check position now to see if the gap is big
+bool safe_to_turn (List_Vehicle lv, bool right_turn = false ){
     
+
     if (right_turn){
-        // check if it is within 15, if so, too risky to turn
-        
-        // Recalculate cost
-//        double right_cost = one_side_cost(car_list.right_front, car_list.right_back, car_list.ego_speed, car_list.ego_s, 30, false);
+       
         Vehicle right_front,right_back;
-        if (car_list.right_front.size()>0){
-            right_front = car_list.get_closest_vehicle(car_list.right_front);
-        }
-        else {
-            right_front.s = car_list.ego_s + 100;
-            right_front.future_s =car_list.ego_future_s + 100;
+        
+        
+        right_front = lv.locate_car(lv.key_rf);
+        right_back = lv.locate_car(lv.key_rb);
+        
+        // if there is no readings written, add 100 in order to return safe to tunr later in the calculations
+        if (!right_front.write){
+            right_front.s = lv.ego_s + 100;
+            right_front.future_s =lv.ego_future_s + 100;
         }
         
-        if (car_list.right_back.size()>0){
-            right_back = car_list.get_closest_vehicle(car_list.right_back);
-        }
-        else {
-            right_back.s = car_list.ego_s - 100;
-            right_back.future_s =car_list.ego_future_s - 100;
+        if (!right_back.write){
+            right_back.s = lv.ego_s - 100;
+            right_back.future_s =lv.ego_future_s - 100;
         }
         
-        if (right_front.s - car_list.ego_s <= 15 || car_list.ego_s - right_back.s <=15|| right_front.future_s - car_list.ego_future_s <=15 || car_list.ego_future_s - right_back.future_s <= 15){
-            std::cout << "Safe_check: ego s:"<< car_list.ego_s << " front s:"<< right_front.s <<" back s:" << right_back.s<< std::endl;
-            std::cout << "Safe_check: ego future s:"<< car_list.ego_s << " front future s:"<< right_front.s <<" back future s:" << right_back.s<< std::endl;
+        // Check s to my own ego cars' s to see if it is too close
+        if (right_front.s - lv.ego_s <= 15 || lv.ego_s - right_back.s <=15|| right_front.future_s - lv.ego_future_s <=15 || lv.ego_future_s - right_back.future_s <= 15){
+            std::cout << "Safe_check: ego s:"<< lv.ego_s << " front s:"<< right_front.s <<" back s:" << right_back.s<< std::endl;
+            std::cout << "Safe_check: ego future s:"<< lv.ego_s << " front future s:"<< right_front.s <<" back future s:" << right_back.s<< std::endl;
              std::cout << "Safe_check: !!!! NOT SAFE ON Right!!!!!" << std::endl;
             
             return false;
         }
+        // If not too close, recalculate the cost to be safe
         else{
-            double side_cost = one_side_cost(car_list.right_front, car_list.right_back, car_list, true);
-            double front_cost = follow_cost(car_list.get_closest_vehicle(car_list.front), car_list, true,true);
+            double side_cost = one_side_cost(lv, true,true); // using future values
+            Vehicle front_reading = lv.locate_car(lv.key_f);
+            float front_cost = follow_cost(front_reading, lv, true,true);
             std::cout << "Safe_check: Recalculate cost  side cost:"<< side_cost<<" front cost:"<< front_cost << std::endl;
             if (side_cost < front_cost){
                 return true;
             }
             else return false;
         }
-        
-
-        
     }
     else{
         
         Vehicle left_front,left_back;
-        if (car_list.left_front.size()>0){
-            left_front = car_list.get_closest_vehicle(car_list.left_front);
-        }
-        else {
-            left_front.s = car_list.ego_s + 100;
-            left_front.future_s = car_list.ego_future_s + 100;
-        }
-        if (car_list.left_back.size()>0){
-            left_back = car_list.get_closest_vehicle(car_list.left_back);
-        }
-        else {
-            left_back.s = car_list.ego_s - 100;
-            left_back.future_s = car_list.ego_future_s - 100;
+        
+        
+        left_front = lv.locate_car(lv.key_lf);
+        left_back = lv.locate_car(lv.key_lb);
+        
+        // if there is no readings written, add 100 in order to return safe to tunr later in the calculations
+        if (!left_front.write){
+            left_front.s = lv.ego_s + 100;
+            left_front.future_s =lv.ego_future_s + 100;
         }
         
-        if (left_front.s - car_list.ego_s <= 15 || car_list.ego_s - left_back.s <=15 || left_front.future_s - car_list.ego_future_s <=15 || car_list.ego_future_s - left_back.future_s <= 15){
-            std::cout << "Safe_check: ego s:"<< car_list.ego_s << " front s:"<< left_front.s <<" back s:" << left_back.s<< std::endl;
-            std::cout << "Safe_check: ego s:"<< car_list.ego_s << " front s:"<< left_front.s <<" back s:" << left_back.s<< std::endl;
+        if (!left_back.write){
+            left_back.s = lv.ego_s - 100;
+            left_back.future_s =lv.ego_future_s - 100;
+        }
+        
+        if (left_front.s - lv.ego_s <= 15 || lv.ego_s - left_back.s <=15 || left_front.future_s - lv.ego_future_s <=15 || lv.ego_future_s - left_back.future_s <= 15){
+            std::cout << "Safe_check: ego s:"<< lv.ego_s << " front s:"<< left_front.s <<" back s:" << left_back.s<< std::endl;
+            std::cout << "Safe_check: ego s:"<< lv.ego_s << " front s:"<< left_front.s <<" back s:" << left_back.s<< std::endl;
             std::cout << "Safe_check: !!!! NOT SAFE ON Left!!!!!" << std::endl;
             return false;
         }
         else{
-            double side_cost = one_side_cost(car_list.left_front, car_list.left_back, car_list, true);
-            double front_cost = follow_cost(car_list.get_closest_vehicle(car_list.front), car_list, true,true);
+            double side_cost = one_side_cost(lv, true);
+            Vehicle front_reading = lv.locate_car(lv.key_f);
+            float front_cost = follow_cost(front_reading, lv, true,true);
             std::cout << "Safe_check: Recalculate cost  side cost:"<< side_cost<<" front cost:"<< front_cost << std::endl;
             if (side_cost < front_cost){
                 return true;
@@ -370,9 +395,7 @@ bool safe_to_turn (List_Vehicle car_list, bool right_turn = false ){
         }
     
     }
-    // Check the cost and front cost again
-    
-    
+   
 }
 
 int main() {
@@ -483,7 +506,7 @@ int main() {
             // Calculate future car_s
             vehicle_list.cal_future_ego_s(ref_val, car_s, prev_size);
             double detect_range = vehicle_list.detect_range;
-            vector<Vehicle> temp_RF,temp_RB,temp_LF,temp_LB,temp_F;
+            vector<Vehicle> temp_readings;
             
             // Reading sensor fusion
             for(int i = 0; i < sensor_fusion.size();++i){
@@ -492,6 +515,7 @@ int main() {
                 if (d < (2+4*lane+2) && d > (2+4*lane-2) ){
                     // Find out the speed of the car
                     Vehicle car;
+                    car.write = true;
                     car.lane = lane;
                     car.s = sensor_fusion[i][5];
                     car.car_id = sensor_fusion[i][0];
@@ -501,14 +525,15 @@ int main() {
                     if (car.s > car_s && car.s-car_s <detect_range){
                         front_car_detected = true;
                         car.state = "F";
-                        vehicle_list.append(vehicle_list.front, car);
-                        temp_F.push_back(car);
+                        vehicle_list.append(car);
+                        temp_readings.push_back(car);
                         
                     }
                 }
                 // Find car in the right, only record cars when there is a right lane and state is not lane keep
                 else if (d < (2+4*(lane+1)+2) && d > (2+4*(lane+1)-2) && lane > 0){
                     Vehicle car;
+                    car.write = true;
                     car.lane = lane+1;
                     car.s = sensor_fusion[i][5];
                     car.car_id = sensor_fusion[i][0];
@@ -516,19 +541,20 @@ int main() {
                     
                     if (car.s > car_s && car.s - car_s <detect_range){
                         car.state = "RF";
-                        vehicle_list.append(vehicle_list.right_front, car);
-                        temp_RF.push_back(car);
+                        vehicle_list.append(car);
+                        temp_readings.push_back(car);
                     }
                     else if (car.s <= car_s && car_s - car.s <detect_range){
                         car.state = "RB";
-                        vehicle_list.append(vehicle_list.right_back, car);
-                        temp_RB.push_back(car);
+                        vehicle_list.append(car);
+                        temp_readings.push_back(car);
                     }
                 }
                 
                 // Find car in the left lane
                 else if (d < (2+4*(lane-1)+2) && d > (2+4*(lane-1)-2) && lane < 2 ){
                     Vehicle car;
+                    car.write = true;
                     car.lane = lane-1;
                     car.s = sensor_fusion[i][5];
                     car.car_id = sensor_fusion[i][0];
@@ -536,24 +562,20 @@ int main() {
                     
                     if (car.s > car_s && car.s - car_s <detect_range){
                         car.state = "LF";
-                        vehicle_list.append(vehicle_list.left_front, car);
-                        temp_LF.push_back(car);
+                        vehicle_list.append(car);
+                        temp_readings.push_back(car);
                     }
                     else if (car.s <= car_s && car_s - car.s <detect_range){
                         car.state = "LB";
-                        vehicle_list.append(vehicle_list.left_back, car);
-                        temp_LB.push_back(car);
+                        vehicle_list.append(car);
+                        temp_readings.push_back(car);
                     }
                 }
                 
             }
             
             // Trace back missing sensor reading and delete out of range items
-            vehicle_list.trace_back(vehicle_list.right_front, temp_RF, prev_size);
-            vehicle_list.trace_back(vehicle_list.right_back, temp_RB, prev_size);
-            vehicle_list.trace_back(vehicle_list.left_front, temp_LF, prev_size);
-            vehicle_list.trace_back(vehicle_list.left_back, temp_LB, prev_size);
-            vehicle_list.trace_back(vehicle_list.front, temp_F, prev_size);
+            vehicle_list.trace_back(temp_readings, prev_size);
             
             
             // Decision making/jumping states

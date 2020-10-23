@@ -49,7 +49,7 @@ public:
         // Initialize Sensor Readings for the first time
         if (sensor_readings.size() == 0 ){
             sensor_readings.push_back(item);
-            std::cout<<"carID: First Adding -- ID:"<< item.car_id<< " Lane:"<< item.lane <<" s"<<item.s<<" Future s "<< item.future_s <<std::endl;
+            std::cout<<"---Sensor: First Adding -- ID:"<< item.car_id<< " Lane:"<< item.lane <<" s"<<item.s<<" Future s "<< item.future_s <<std::endl;
         }
         // If there are items inside object, search for the same car id
         else{
@@ -71,7 +71,7 @@ public:
             // If not found, meaning new car appear in the reading
             if (!found) {
                 sensor_readings.push_back(item);
-                std::cout<<"carID: Adding -- ID:"<< item.car_id << " Lane:"<< item.lane <<" s"<<item.s<<" Future s "<< item.future_s <<"ego size:"<<ego_s <<std::endl;
+                std::cout<<"---Sensor: Adding -- ID:"<< item.car_id << " Lane:"<< item.lane <<" s"<<item.s<<" Future s "<< item.future_s <<"ego size:"<<ego_s <<std::endl;
             }
         }
     }
@@ -109,12 +109,12 @@ public:
                     
                     sensor_readings[i].s = predict_s;
                     sensor_readings[i].future_s = predict_s + (double)prev_size * 0.02 * sensor_readings[i].speed;
-                    std::cout<<"carID: predicting lost reading -- ID:"<< sensor_readings[i].car_id<<" Lane:"<< sensor_readings[i].lane <<" prev s:"<< prev_s <<" predicting s: "<<predict_s<<" Future s:"<< sensor_readings[i].future_s <<" ego s:"<<ego_s <<std::endl;
+                    std::cout<<"---Sensor: predicting lost reading -- ID:"<< sensor_readings[i].car_id<<" Lane:"<< sensor_readings[i].lane <<" prev s:"<< prev_s <<" predicting s: "<<predict_s<<" Future s:"<< sensor_readings[i].future_s <<" ego s:"<<ego_s <<std::endl;
                     
                 }
                 // if it is outside the range, delete this
                 else{
-                    std::cout<<"carID: REMOVING Out of bound -- ID:"<< sensor_readings[i].car_id <<" Lane:"<< sensor_readings[i].lane <<" s"<<sensor_readings[i].s<<" Future s "<< sensor_readings[i].future_s <<std::endl;
+                    std::cout<<"---Sensor: REMOVING Out of bound -- ID:"<< sensor_readings[i].car_id <<" Lane:"<< sensor_readings[i].lane <<" s"<<sensor_readings[i].s<<" Future s "<< sensor_readings[i].future_s <<std::endl;
                     
                     sensor_readings.erase(sensor_readings.begin()+i);
                     
@@ -246,8 +246,8 @@ public:
         float back_cost = follow_cost(back, false, future_s_flag);
         
         // Calculate total cost
-        std::cout<<"front cost: "<< front_cost<< std::endl;
-        std::cout<<"back cost: "<< back_cost<< std::endl;
+        std::cout<<"--Cost: front cost: "<< front_cost<< std::endl;
+        std::cout<<"--Cost: back cost: "<< back_cost<< std::endl;
         double cost;
         // Calculate total Right cost
         if (front_cost != 0.0 && back_cost != 0.0 ) {
@@ -272,17 +272,17 @@ public:
         locate_car(right_front,right_back,left_front,left_back,front);
         
         double right_cost = one_side_cost(right_front,right_back, true,future_s_flag);
-        std::cout << "***** Total Right cost: "<<right_cost << std::endl;
+        std::cout << "--Cost: ***** Total Right cost: "<<right_cost << std::endl;
         
         
         double left_cost = one_side_cost(left_front,left_back,false,future_s_flag);
-        std::cout << "***** Total Left cost: "<<left_cost << std::endl;
+        std::cout << "--Cost: ***** Total Left cost: "<<left_cost << std::endl;
         
         
         // Calculate same lane front car cost
         
         float front_cost = follow_cost(front, true,future_s_flag);
-        std::cout << "***** front cost: "<<front_cost << std::endl<< std::endl;
+        std::cout << "--Cost: ***** front cost: "<<front_cost << std::endl<< std::endl;
         
         // Write to follow speed
         if (front_cost > 1){
@@ -307,7 +307,7 @@ public:
         // if both cost are too high stay and slow down
         else if ((right_cost > 1 && left_cost >1) || (front_cost < right_cost && front_cost < left_cost) || front_cost > 1){
             // DONT turn since it too risky
-            std::cout << "*** Too Risky to turn"<<std::endl;
+            std::cout << "--Cost: *** Too Risky to turn"<<std::endl;
             return 0;
         }
         
@@ -351,9 +351,9 @@ public:
             
             // Check s to my own ego cars' s to see if it is too close
             if (right_front.s - ego_s <= 15 || ego_s - right_back.s <=15|| right_front.future_s - ego_future_s <=15 || ego_future_s - right_back.future_s <= 15){
-                std::cout << "Safe_check: ego s:"<< ego_s << " front s:"<< right_front.s <<" back s:" << right_back.s<< std::endl;
-                std::cout << "Safe_check: ego future s:"<< ego_s << " front future s:"<< right_front.s <<" back future s:" << right_back.s<< std::endl;
-                std::cout << "Safe_check: !!!! NOT SAFE ON Right!!!!!" << std::endl;
+                std::cout << "---Safe_check: ego s:"<< ego_s << " front s:"<< right_front.s <<" back s:" << right_back.s<< std::endl;
+                std::cout << "---Safe_check: ego future s:"<< ego_s << " front future s:"<< right_front.s <<" back future s:" << right_back.s<< std::endl;
+                std::cout << "---Safe_check: !!!! NOT SAFE ON Right!!!!!" << std::endl;
                 
                 return false;
             }
@@ -363,7 +363,7 @@ public:
                 double side_cost = one_side_cost(right_front,right_back, true, future_s_flag); // using future values
 
                 float front_cost = follow_cost(front, true,future_s_flag);
-                std::cout << "Safe_check: Recalculate cost  side cost:"<< side_cost<<" front cost:"<< front_cost << std::endl;
+                std::cout << "---Safe_check: Recalculate cost  side cost:"<< side_cost<<" front cost:"<< front_cost << std::endl;
                 if (side_cost < front_cost){
                     return true;
                 }
@@ -383,16 +383,16 @@ public:
             }
             
             if (left_front.s - ego_s <= 15 || ego_s - left_back.s <=15 || left_front.future_s - ego_future_s <=15 || ego_future_s - left_back.future_s <= 15){
-                std::cout << "Safe_check: ego s:"<< ego_s << " front s:"<< left_front.s <<" back s:" << left_back.s<< std::endl;
-                std::cout << "Safe_check: ego s:"<< ego_s << " front s:"<< left_front.s <<" back s:" << left_back.s<< std::endl;
-                std::cout << "Safe_check: !!!! NOT SAFE ON Left!!!!!" << std::endl;
+                std::cout << "---Safe_check: ego s:"<< ego_s << " front s:"<< left_front.s <<" back s:" << left_back.s<< std::endl;
+                std::cout << "---Safe_check: ego s:"<< ego_s << " front s:"<< left_front.s <<" back s:" << left_back.s<< std::endl;
+                std::cout << "---Safe_check: !!!! NOT SAFE ON Left!!!!!" << std::endl;
                 return false;
             }
             else{
                 double side_cost = one_side_cost(left_front,left_back, false,future_s_flag);
                 
                 float front_cost = follow_cost(front, true,future_s_flag);
-                std::cout << "Safe_check: Recalculate cost  side cost:"<< side_cost<<" front cost:"<< front_cost << std::endl;
+                std::cout << "---Safe_check: Recalculate cost  side cost:"<< side_cost<<" front cost:"<< front_cost << std::endl;
                 if (side_cost < front_cost){
                     return true;
                 }
@@ -663,7 +663,7 @@ int main() {
             }
             else if (slow_down && vehicle_list.ref_val > vehicle_list.follow_speed){
                 vehicle_list.ref_val -= 0.225;
-                std::cout <<"Speed Control: Slowing  ref val: " << vehicle_list.ref_val<<" Target_follow_speed: " << vehicle_list.follow_speed<< std::endl;
+                std::cout <<"------Speed Control: Slowing  ref val: " << vehicle_list.ref_val<<" Target_follow_speed: " << vehicle_list.follow_speed<< std::endl;
                 
                 
             }
@@ -671,7 +671,7 @@ int main() {
                 slow_down = false;
                 change_lane_fail = false;
                 
-                std::cout << "Speed Control: Reseting slow down and change_lane fail" << std::endl;
+                std::cout << "------Speed Control: Reseting slow down and change_lane fail" << std::endl;
             }
             
             

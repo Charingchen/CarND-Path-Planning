@@ -46,7 +46,8 @@ public:
     double ego_future_s,ego_speed,prev_ego_s;
     int ego_lane = 1;
     double ego_s = 0.0;
-    double detect_range = 30;
+    double detect_range = 60;
+    double too_close = 25;
     double follow_speed = 30.0;
     double ref_val = 0.0; //MPH
    
@@ -326,7 +327,7 @@ public:
             }
         }
         // if both cost are too high stay and slow down
-        else if ((right_cost > 1 && left_cost >1) || (front_cost < right_cost && front_cost < left_cost) || front_cost > 0.95){
+        else if ((right_cost > 1 && left_cost >1) || (front_cost < right_cost && front_cost < left_cost) || front_cost > 0.9 || (right_cost > 1 && ego_lane == 0) || (left_cost > 1 && ego_lane == 2)){
             // DONT turn since it too risky
             std::cout << "--Cost: *** Too Risky to turn"<<std::endl;
             return 0;
@@ -373,7 +374,7 @@ public:
             }
             
             // Check s to my own ego cars' s to see if it is too close
-            if (right_front.s - ego_s <= 15 || ego_s - right_back.s <=20|| right_front.future_s - ego_future_s <=15 || ego_future_s - right_back.future_s <= 20){
+            if (right_front.s - ego_s <= too_close || ego_s - right_back.s <=too_close|| right_front.future_s - ego_future_s <=too_close || ego_future_s - right_back.future_s <= too_close){
                 std::cout << "---Safe_check: ego s:"<< ego_s << " front s:"<< right_front.s <<" back s:" << right_back.s<< std::endl;
                 std::cout << "---Safe_check: ego future s:"<< ego_future_s << " front future s:"<< right_front.future_s <<" back future s:" << right_back.future_s<< std::endl;
                 std::cout << "---Safe_check: !!!! NOT SAFE ON Right!!!!!" << std::endl;
@@ -405,7 +406,7 @@ public:
                 left_back.future_s =ego_future_s - 100;
             }
             
-            if (left_front.s - ego_s <= 15 || ego_s - left_back.s <=20 || left_front.future_s - ego_future_s <=15 || ego_future_s - left_back.future_s <= 20){
+            if (left_front.s - ego_s <= too_close || ego_s - left_back.s <=too_close || left_front.future_s - ego_future_s <=too_close || ego_future_s - left_back.future_s <= too_close){
                 std::cout << "---Safe_check: ego s:"<< ego_s << " front s:"<< left_front.s <<" back s:" << left_back.s<< std::endl;
                 std::cout << "---Safe_check: ego future s:"<< ego_future_s << " front future s:"<< left_front.future_s <<" back future s:" << left_back.future_s<< std::endl;
                 std::cout << "---Safe_check: !!!! NOT SAFE ON Left!!!!!" << std::endl;

@@ -134,6 +134,28 @@ public:
        
     }
     
+    void locate_front_car (Vehicle &front){
+        Vehicle f;
+        f.s =  10000;
+        
+        for (int i = 0;i < sensor_readings.size();++i) {
+            float d = sensor_readings[i].d;
+            int s = sensor_readings[i].s;
+            
+            if (d < (2+4*ego_lane+2) && d > (2+4*ego_lane-2)){
+                if (s > ego_s && s - ego_s <detect_range){
+                    // Check if this is the closet to ego
+                    if (abs(s-ego_s) < abs(f.s - ego_s)){
+                        f = sensor_readings[i];
+                        std::cout<< "------Found F\n";
+                    }
+                }
+            }
+        }
+        
+        front = f;
+    }
+    
     void locate_car (Vehicle &right_front, Vehicle &right_back, Vehicle &left_front, Vehicle &left_back, Vehicle &front){
         Vehicle rf,rb,lf,lb,f;
         // Make s big to find the closest sensor car
@@ -155,7 +177,8 @@ public:
                     // Check if this is the closet to ego
                     if (abs(s-ego_s) < abs(rf.s - ego_s)){
                         rf = sensor_readings[i];
-                        std::cout<< "------Found RF\n";
+                        std::cout<< "------Found RF ID:"<<sensor_readings[i].car_id <<"\n";
+                        
                     }
                 }
                 // back
@@ -163,7 +186,7 @@ public:
                     // Check if this is the closet to ego
                     if (abs(s-ego_s) < abs(rb.s - ego_s)){
                         rb = sensor_readings[i];
-                        std::cout<< "------Found RB\n";
+                        std::cout<< "------Found RB ID:"<<sensor_readings[i].car_id <<"\n";
                     }
                 }
             }
@@ -174,7 +197,7 @@ public:
                     // Check if this is the closet to ego
                     if (abs(s-ego_s) < abs(lf.s - ego_s)){
                         lf = sensor_readings[i];
-                        std::cout<< "------Found LF\n";
+                        std::cout<< "------Found LF ID:"<<sensor_readings[i].car_id <<"\n";
                     }
                 }
                 // back
@@ -182,7 +205,7 @@ public:
                     // Check if this is the closet to ego
                     if (abs(s-ego_s) < abs(lb.s - ego_s)){
                         lb = sensor_readings[i];
-                        std::cout<< "------Found LB\n";
+                        std::cout<< "------Found LB ID:"<<sensor_readings[i].car_id <<"\n";
                     }
                 }
             }
@@ -192,7 +215,7 @@ public:
                     // Check if this is the closet to ego
                     if (abs(s-ego_s) < abs(f.s - ego_s)){
                         f = sensor_readings[i];
-                        std::cout<< "------Found F\n";
+                        std::cout<< "------Found F ID:"<<sensor_readings[i].car_id <<"\n";
                     }
                 }
             }
@@ -328,13 +351,13 @@ public:
     }
     
     
-    bool safe_to_turn (bool right_turn, bool future_s_flag, float &front_cost){
+    bool safe_to_turn (bool right_turn, bool future_s_flag){
         
         Vehicle right_front,right_back,left_front,left_back,front;
         
         locate_car(right_front,right_back,left_front,left_back,front);
         
-        front_cost = follow_cost(front, true,future_s_flag);
+        float front_cost = follow_cost(front, true,future_s_flag);
         
         if (right_turn){
             
@@ -504,13 +527,13 @@ int main() {
            *   sequentially every .02 seconds
            */
             
+            // Calculate future car_s
+            vehicle_list.update_ego(car_s, car_speed,prev_size);
            
             if (prev_size >  0) {
                 car_s = end_path_s;
             }
             
-            // Calculate future car_s
-            vehicle_list.update_ego(car_s, car_speed,prev_size);
             vector<Vehicle> temp_readings;
             
             // Reading sensor fusion
@@ -525,9 +548,9 @@ int main() {
                 
                 // Enter 30 meters withn the front car
                 if (abs(car.s-car_s) <vehicle_list.detect_range) {
-                    if (d < (2+4*vehicle_list.ego_lane+2) && d > (2+4*vehicle_list.ego_lane-2) && car.s > car_s && car.s-car_s <vehicle_list.detect_range){
-                        front_car_detected = true;
-                    }
+//                    if (d < (2+4*vehicle_list.ego_lane+2) && d > (2+4*vehicle_list.ego_lane-2) && car.s > car_s && car.s-car_s <vehicle_list.detect_range){
+//                        front_car_detected = true;
+//                    }
                     vehicle_list.append(car);
                     temp_readings.push_back(car);
                 }
@@ -535,6 +558,15 @@ int main() {
             
             // Trace back missing sensor reading and delete out of range items
             vehicle_list.trace_back(temp_readings, prev_size);
+            
+            // Find the front cars only to see if the car is in front of us.
+            Vehicle front;
+            vehicle_list.locate_front_car(front);
+            float front_cost = vehicle_list.follow_cost(front, true,true);
+            if (front_cost == 0) {
+                front_car_detected = false;
+            }
+            else front_car_detected = true;
             
             
             // Decision making/jumping states
@@ -545,32 +577,26 @@ int main() {
                         std::cout<< "FSM: !!!! Front car detected, Change lane fail status: "<< change_lane_fail<< std::endl;
                         int turn_result = vehicle_list.calculate_cost();
                         
-                        // if there is not lane fail detect before, if there is, stay this state.
-                        if (!change_lane_fail) {
-                            if (turn_result == 1) {//1 left 2 right 0 not assigned
-                                // Jump to PLCL
-                                std::cout << "FSM: Trying left" << std::endl;
-                                ego_state = 1;
-                                fail_count = 0 ;
-                            }
-                            else if (turn_result == 2){
-                                // Jumpe to PLCR
-                                std::cout << "FSM: Trying right" << std::endl;
-                                ego_state = 2;
-                                fail_count = 0;
-                            }
-                            else{
-                                change_lane_fail = true;
-                                slow_down = true;
-                                std::cout << "FSM: !!Change lane fail!!"<<std::endl;
-                            }
+                        
+                        if (turn_result == 1) {//1 left 2 right 0 not assigned
+                            // Jump to PLCL
+                            std::cout << "FSM: Trying left" << std::endl;
+                            ego_state = 1;
+                            fail_count = 0 ;
                         }
-                        else {
-                            ego_state = 0; //stay
-                            std::cout << "FSM: slowing down	********" << std::endl;
+                        else if (turn_result == 2){
+                            // Jumpe to PLCR
+                            std::cout << "FSM: Trying right" << std::endl;
+                            ego_state = 2;
+                            fail_count = 0;
+                        }
+                        else{
                             slow_down = true;
+                            ego_state = 0; //stay
+                            std::cout << "FSM: slowing down    ********" << std::endl;
                         }
                     }
+                
                     break;
                     
                 // Prepare for lane change left
@@ -578,8 +604,7 @@ int main() {
                     // check if the future position is still vaild for lane change on the left
                     // and compare to the cost of distance to the front car
                     std::cout << "FSM: Prepare for lane change left   Fail count:"<< fail_count << std::endl;
-                    float front_cost;
-                    if (vehicle_list.safe_to_turn(false,true,front_cost) && fail_count >= 3){
+                    if (vehicle_list.safe_to_turn(false,true) && fail_count >= 3){
                         std::cout << "FSM: Safe to turn left" << std::endl;
                         ego_state = 3;
                         target_lane = vehicle_list.ego_lane - 1;
@@ -595,7 +620,7 @@ int main() {
                         if (fail_count > 10 || front_cost > 0.9){
                             slow_down = true;
                             if (fail_count > 20){
-                                change_lane_fail = true;
+//                                change_lane_fail = true;
                                 ego_state = 0;
                             }
                         }
@@ -607,8 +632,7 @@ int main() {
                     std::cout << "FSM: Prepare for lane change Right   Fail count:"<< fail_count << std::endl;
                     // check if the future position is still vaild for lane change on the right
                     // and compare to the cost of distance to the front car
-                    front_cost = 0;
-                    if (vehicle_list.safe_to_turn(true,true,front_cost) && fail_count >=3){
+                    if (vehicle_list.safe_to_turn(true,true) && fail_count >=3){
                         std::cout << "FSM: Safe to turn right" << std::endl;
                         ego_state = 4;
                         target_lane = vehicle_list.ego_lane + 1;
@@ -624,7 +648,7 @@ int main() {
                         if (fail_count > 10 || front_cost > 0.9){
                             slow_down = true;
                             if (fail_count > 20){
-                                change_lane_fail = true;
+//                                change_lane_fail = true;
                                 ego_state = 0;
                             }
                         }
@@ -677,7 +701,7 @@ int main() {
             }
             else if (vehicle_list.ref_val <= vehicle_list.follow_speed - 3){
                 slow_down = false;
-                change_lane_fail = false;
+//                change_lane_fail = false;
                 
                 std::cout << "------Speed Control: Reseting slow down and change_lane fail" << std::endl;
             }

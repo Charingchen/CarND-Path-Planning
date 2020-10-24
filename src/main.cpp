@@ -566,9 +566,14 @@ int main() {
             float front_cost = vehicle_list.follow_cost(front, true,true);
             if (front_cost == 0) {
                 front_car_detected = false;
+                slow_down = false;
             }
-            else front_car_detected = true;
-            
+            else {
+                front_car_detected = true;
+                
+                if (front_cost > 0.9) slow_down=true;
+                else slow_down = false;
+            }
             
             // Decision making/jumping states
             switch (ego_state) {
@@ -618,7 +623,7 @@ int main() {
                         ego_state = 1;
                         fail_count += 1;
                         
-                        if (fail_count > 10 || front_cost > 0.9){
+                        if (fail_count > 10 ){
                             slow_down = true;
                             if (fail_count > 20){
 //                                change_lane_fail = true;
@@ -646,7 +651,7 @@ int main() {
                         ego_state = 2;
                         fail_count += 1;
                         
-                        if (fail_count > 10 || front_cost > 0.9){
+                        if (fail_count > 10){
                             slow_down = true;
                             if (fail_count > 20){
 //                                change_lane_fail = true;

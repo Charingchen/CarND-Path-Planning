@@ -71,7 +71,7 @@ public:
                     sensor_readings[i].future_s = item.future_s;
                     found = true;
                     
-                    std::cout<<"-----------Sensor: UPDATE ID:"<<item.car_id<< " Lane:"<< item.lane <<" s:"<<item.s<<" Future s:"<< item.future_s <<"ego s:"<<ego_s <<std::endl;
+                    std::cout<<"-----------Sensor: UPDATE ID:"<<item.car_id<< " Lane:"<< item.lane <<" s:"<<item.s<<" Future s:"<< item.future_s <<" Dist to ego:"<<item.s - ego_s<<std::endl;
                     // Jump out
                     break;
                 }
@@ -79,7 +79,7 @@ public:
             // If not found, meaning new car appear in the reading
             if (!found) {
                 sensor_readings.push_back(item);
-                std::cout<<"---------Sensor: Adding -- ID:"<< item.car_id << " Lane:"<< item.lane<<" s:"<<item.s<<" Future s:"<< item.future_s <<"ego s:"<<ego_s <<std::endl;
+                std::cout<<"---------Sensor: Adding -- ID:"<< item.car_id << " Lane:"<< item.lane<<" s:"<<item.s<<" Future s:"<< item.future_s <<" Dist to ego:"<<item.s - ego_s<<std::endl;
             }
         }
     }
@@ -108,7 +108,7 @@ public:
                     
                     sensor_readings[i].s = predict_s;
                     sensor_readings[i].future_s = predict_s + (double)prev_size * 0.02 * sensor_readings[i].speed;
-                    std::cout<<"---------Sensor: predicting lost reading -- ID:"<< sensor_readings[i].car_id<<" Lane:"<< sensor_readings[i].lane<<" prev s:"<< prev_s <<" predicting s: "<<predict_s<<" Future s:"<< sensor_readings[i].future_s <<" ego s:"<<ego_s <<std::endl;
+                    std::cout<<"---------Sensor: predicting lost reading -- ID:"<< sensor_readings[i].car_id<<" Lane:"<< sensor_readings[i].lane<<" prev s:"<< prev_s <<" predicting s: "<<predict_s<<" Future s:"<< sensor_readings[i].future_s <<" Dist to ego:"<<predict_s - ego_s <<std::endl;
                     
                 }
                 // if it is outside the range, delete this
@@ -303,7 +303,7 @@ public:
             }
         }
         // if both cost are too high stay and slow down
-        else if ((right_cost > 1 && left_cost >1) || (front_cost < right_cost && front_cost < left_cost) || front_cost > 0.9){
+        else if ((right_cost > 1 && left_cost >1) || (front_cost < right_cost && front_cost < left_cost) || front_cost > 0.95){
             // DONT turn since it too risky
             std::cout << "--Cost: *** Too Risky to turn"<<std::endl;
             return 0;
@@ -350,7 +350,7 @@ public:
             }
             
             // Check s to my own ego cars' s to see if it is too close
-            if (right_front.s - ego_s <= 15 || ego_s - right_back.s <=15|| right_front.future_s - ego_future_s <=15 || ego_future_s - right_back.future_s <= 15){
+            if (right_front.s - ego_s <= 15 || ego_s - right_back.s <=20|| right_front.future_s - ego_future_s <=15 || ego_future_s - right_back.future_s <= 20){
                 std::cout << "---Safe_check: ego s:"<< ego_s << " front s:"<< right_front.s <<" back s:" << right_back.s<< std::endl;
                 std::cout << "---Safe_check: ego future s:"<< ego_future_s << " front future s:"<< right_front.future_s <<" back future s:" << right_back.future_s<< std::endl;
                 std::cout << "---Safe_check: !!!! NOT SAFE ON Right!!!!!" << std::endl;
@@ -382,7 +382,7 @@ public:
                 left_back.future_s =ego_future_s - 100;
             }
             
-            if (left_front.s - ego_s <= 15 || ego_s - left_back.s <=15 || left_front.future_s - ego_future_s <=15 || ego_future_s - left_back.future_s <= 15){
+            if (left_front.s - ego_s <= 15 || ego_s - left_back.s <=20 || left_front.future_s - ego_future_s <=15 || ego_future_s - left_back.future_s <= 20){
                 std::cout << "---Safe_check: ego s:"<< ego_s << " front s:"<< left_front.s <<" back s:" << left_back.s<< std::endl;
                 std::cout << "---Safe_check: ego future s:"<< ego_future_s << " front future s:"<< left_front.future_s <<" back future s:" << left_back.future_s<< std::endl;
                 std::cout << "---Safe_check: !!!! NOT SAFE ON Left!!!!!" << std::endl;
@@ -669,13 +669,13 @@ int main() {
                 vehicle_list.ref_val += 0.225;
 //                std::cout << "------Speed Control: Speeding" << std::endl;
             }
-            else if (slow_down && vehicle_list.ref_val > vehicle_list.follow_speed - 10){
+            else if (slow_down && vehicle_list.ref_val > vehicle_list.follow_speed - 3){
                 vehicle_list.ref_val -= 0.225;
                 std::cout <<"------Speed Control: Slowing  ref val: " << vehicle_list.ref_val<<" Target_follow_speed: " << vehicle_list.follow_speed<< std::endl;
                 
                 
             }
-            else if (vehicle_list.ref_val <= vehicle_list.follow_speed - 10){
+            else if (vehicle_list.ref_val <= vehicle_list.follow_speed - 3){
                 slow_down = false;
                 change_lane_fail = false;
                 

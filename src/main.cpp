@@ -309,7 +309,7 @@ public:
         // Write to follow speed
         if (front_cost > 1){
             // Convert m/s back to mph, if front cost too high, set half of the front car speed
-            follow_speed = front.speed * 2.24 * 0.3;
+            follow_speed = front.speed * 2.24 * 0.2;
         }
         else {
             follow_speed = front.speed * 2.24 * 0.6 ;
@@ -328,7 +328,7 @@ public:
         }
         
         // if both cost are too high stay and slow down
-        else if ((right_cost > 1 && left_cost >1) || (front_cost < right_cost &&  front_cost < left_cost)||((right_cost > 1 || right_cost > front_cost) && ego_lane == 0) || ((left_cost > 1 || left_cost > front_cost) && ego_lane == 2)){
+        else if ((right_cost > 0.9 && left_cost > 0.9) || (front_cost < right_cost &&  front_cost < left_cost)||((right_cost > 0.9 || right_cost > front_cost) && ego_lane == 0) || ((left_cost > 0.9 || left_cost > front_cost) && ego_lane == 2)){
             // DONT turn since it too risky
             std::cout << "--Cost: *** Too Risky to turn"<<std::endl;
             return 0;

@@ -47,7 +47,7 @@ public:
     int ego_lane = 1;
     double ego_s = 0.0;
     double detect_range = 60;
-    double too_close = 25;
+    double too_close = 15;
     double follow_speed = 30.0;
     double ref_val = 0.0; //MPH
    
@@ -72,7 +72,7 @@ public:
                     sensor_readings[i].future_s = item.future_s;
                     found = true;
                     
-                    std::cout<<"-----------Sensor: UPDATE ID:"<<item.car_id<< " Lane:"<< item.lane <<" s:"<<item.s<<" Future s:"<< item.future_s <<" Dist to ego:"<<item.s - ego_s<<std::endl;
+//                    std::cout<<"-----------Sensor: UPDATE ID:"<<item.car_id<< " Lane:"<< item.lane <<" s:"<<item.s<<" Future s:"<< item.future_s <<" Dist to ego:"<<item.s - ego_s<<std::endl;
                     // Jump out
                     break;
                 }
@@ -109,7 +109,7 @@ public:
                     
                     sensor_readings[i].s = predict_s;
                     sensor_readings[i].future_s = predict_s + (double)prev_size * 0.02 * sensor_readings[i].speed;
-                    std::cout<<"---------Sensor: predicting lost reading -- ID:"<< sensor_readings[i].car_id<<" Lane:"<< sensor_readings[i].lane<<" prev s:"<< prev_s <<" predicting s: "<<predict_s<<" Future s:"<< sensor_readings[i].future_s <<" Dist to ego:"<<predict_s - ego_s <<std::endl;
+//                    std::cout<<"---------Sensor: predicting lost reading -- ID:"<< sensor_readings[i].car_id<<" Lane:"<< sensor_readings[i].lane<<" prev s:"<< prev_s <<" predicting s: "<<predict_s<<" Future s:"<< sensor_readings[i].future_s <<" Dist to ego:"<<predict_s - ego_s <<std::endl;
                     
                 }
                 // if it is outside the range, delete this
@@ -309,14 +309,14 @@ public:
         // Write to follow speed
         if (front_cost > 1){
             // Convert m/s back to mph, if front cost too high, set half of the front car speed
-            follow_speed = front.speed * 2.24 * 0.5;
+            follow_speed = front.speed * 2.24 * 0.3;
         }
         else {
-            follow_speed = front.speed * 2.24 ;
+            follow_speed = front.speed * 2.24 * 0.6 ;
         }
         // Base on the cost decide which lane to change
         // IF both lane has no cars
-        if (right_cost == 0 && right_cost == 0 ){
+        if (right_cost == 0 && left_cost == 0 ){
             // shift to right if not at the right most lane
             if (ego_lane < 2) {
                 return 2;
@@ -326,8 +326,9 @@ public:
                 return 1;
             }
         }
+        
         // if both cost are too high stay and slow down
-        else if ((right_cost > 1 && left_cost >1) || (front_cost < right_cost && front_cost < left_cost) || front_cost > 0.9 || (right_cost > 1 && ego_lane == 0) || (left_cost > 1 && ego_lane == 2)){
+        else if ((right_cost > 1 && left_cost >1) || (front_cost < right_cost &&  front_cost < left_cost)||((right_cost > 1 || right_cost > front_cost) && ego_lane == 0) || ((left_cost > 1 || left_cost > front_cost) && ego_lane == 2)){
             // DONT turn since it too risky
             std::cout << "--Cost: *** Too Risky to turn"<<std::endl;
             return 0;
@@ -335,17 +336,18 @@ public:
         
         else{
             
-            if (right_cost > left_cost && ego_lane > 0){
-                // more cost means good for now
+            if ((right_cost > left_cost && ego_lane > 0) || (ego_lane == 2 && left_cost < front_cost) ){
                 //turn left:
                 return 1;
             }
-            else if (right_cost < left_cost && ego_lane < 2){
-                //trun right: if the cost is same
+            else if ((right_cost < left_cost && ego_lane < 2) || (ego_lane == 0 && right_cost < front_cost)){
+                //trun right:
                 return 2;
             }
+    
             else {
                 // If there are equal don't change lane
+                std::cout << "--Cost: Left and right "<< left_cost<<" "<< right_cost <<std::endl;
                 return 0;
             }
         }
@@ -475,8 +477,9 @@ int main() {
     bool lane_change_set = false;
     int fail_count = 0;
     List_Vehicle vehicle_list;
+    bool slow_down = false;
 
- h.onMessage([&vehicle_list,&fail_count,&target_lane,&lane_change_set,&change_lane_fail,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
+ h.onMessage([&slow_down,&vehicle_list,&fail_count,&target_lane,&lane_change_set,&change_lane_fail,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
            &map_waypoints_dx,&map_waypoints_dy,&ego_state]
           (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
            uWS::OpCode opCode) {
@@ -521,7 +524,7 @@ int main() {
             vector<double> next_y_vals;
             int prev_size = previous_path_x.size();
             bool front_car_detected = false;
-            bool slow_down = false;
+            
 
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
@@ -564,15 +567,20 @@ int main() {
             Vehicle front;
             vehicle_list.locate_front_car(front);
             float front_cost = vehicle_list.follow_cost(front, true,true);
+            
             if (front_cost == 0) {
                 front_car_detected = false;
                 slow_down = false;
             }
             else {
                 front_car_detected = true;
-                
-                if (front_cost > 0.9) slow_down=true;
-                else slow_down = false;
+                std::cout<<"----Front Cost: "<<front_cost<<"\n";
+                if (front_cost > 0.9) {
+                    slow_down=true;
+                }
+                else if (front_cost < 0.5) {
+                    slow_down = false;
+                }
             }
             
             // Decision making/jumping states
@@ -580,7 +588,7 @@ int main() {
                 case 0:
                     if (front_car_detected){
                         // calculate the cost for left and right and decide which one to do
-                        std::cout<< "FSM: !!!! Front car detected, Change lane fail status: "<< change_lane_fail<< std::endl;
+                        std::cout<< "FSM: !!!! Front car detected"<< std::endl;
                         int turn_result = vehicle_list.calculate_cost();
                         
                         
@@ -596,10 +604,10 @@ int main() {
                             ego_state = 2;
                             fail_count = 0;
                         }
+                      
                         else{
-                            slow_down = true;
                             ego_state = 0; //stay
-                            std::cout << "FSM: slowing down    ********" << std::endl;
+                            std::cout << "FSM: Keep lane" << std::endl;
                         }
                     }
                 
@@ -624,9 +632,7 @@ int main() {
                         fail_count += 1;
                         
                         if (fail_count > 10 ){
-                            slow_down = true;
                             if (fail_count > 20){
-//                                change_lane_fail = true;
                                 ego_state = 0;
                             }
                         }
@@ -651,12 +657,9 @@ int main() {
                         ego_state = 2;
                         fail_count += 1;
                         
-                        if (fail_count > 10){
-                            slow_down = true;
-                            if (fail_count > 20){
-//                                change_lane_fail = true;
-                                ego_state = 0;
-                            }
+                        if (fail_count > 20){
+                            ego_state = 0;
+                            
                         }
                         
                     }
@@ -689,7 +692,7 @@ int main() {
                     }
                     break;
                 default:
-                    std::cout<<"FSM: ego state numbe unknown, moving back to state 0\n";
+                    std::cout<<"FSM: ego state number unknown, moving back to state 0\n";
                     ego_state = 0;
                     
             }
@@ -697,19 +700,17 @@ int main() {
             
             if (vehicle_list.ref_val < 49.5 && !slow_down){
                 vehicle_list.ref_val += 0.225;
-//                std::cout << "------Speed Control: Speeding" << std::endl;
+
             }
-            else if (slow_down && vehicle_list.ref_val > vehicle_list.follow_speed - 3){
+            else if (slow_down && vehicle_list.ref_val > vehicle_list.follow_speed){
                 vehicle_list.ref_val -= 0.225;
-                std::cout <<"------Speed Control: Slowing  ref val: " << vehicle_list.ref_val<<" Target_follow_speed: " << vehicle_list.follow_speed<< std::endl;
+                std::cout <<"------Speed Control: Slowing Down  ref val: " << vehicle_list.ref_val<<" Target_follow_speed: " << vehicle_list.follow_speed<< std::endl;
                 
                 
             }
-            else if (vehicle_list.ref_val <= vehicle_list.follow_speed - 3){
+            else if (vehicle_list.ref_val <= vehicle_list.follow_speed){
                 slow_down = false;
-//                change_lane_fail = false;
-                
-                std::cout << "------Speed Control: Reseting slow down and change_lane fail" << std::endl;
+                std::cout << "------Speed Control: Reseting slow down" << std::endl;
             }
             
             

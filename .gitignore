@@ -2,3 +2,6 @@
 Good_run_collidewith front car.mov
 Predict_sensor_bug.mov
 *.mov
+*.xml
+*.iml
+*.DS_Store

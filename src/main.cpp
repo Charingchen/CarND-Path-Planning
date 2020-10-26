@@ -52,7 +52,7 @@ public:
     double ref_val = 0.0; //MPH
    
     
-    // Append new readings to the previouse. Handles if the new car appears in the readings
+    // Append new readings to the previous. Handles if the new car appears in the readings
     void append(Vehicle item){
         bool found = false;
         // Initialize Sensor Readings for the first time
@@ -327,7 +327,7 @@ public:
             }
         }
         
-        // if both cost are too high stay and slow down
+        // if the costs are too high stay and slow down
         else if ((right_cost > 0.9 && left_cost > 0.9) || (front_cost < right_cost &&  front_cost < left_cost)||((right_cost > 0.9 || right_cost > front_cost) && ego_lane == 0) || ((left_cost > 0.9 || left_cost > front_cost) && ego_lane == 2)){
             // DONT turn since it too risky
             std::cout << "--Cost: *** Too Risky to turn"<<std::endl;
@@ -550,7 +550,7 @@ int main() {
                 car.d = d;
                 car.cal_mag_v(sensor_fusion[i][3], sensor_fusion[i][4], (double) prev_size);
                 
-                // Enter 30 meters withn the front car
+                // Enter 30 meters within the front car
                 if (abs(car.s-car_s) <vehicle_list.detect_range) {
 //                    if (d < (2+4*vehicle_list.ego_lane+2) && d > (2+4*vehicle_list.ego_lane-2) && car.s > car_s && car.s-car_s <vehicle_list.detect_range){
 //                        front_car_detected = true;
@@ -618,6 +618,7 @@ int main() {
                     // check if the future position is still vaild for lane change on the left
                     // and compare to the cost of distance to the front car
                     std::cout << "FSM: Prepare for lane change left   Fail count:"<< fail_count << std::endl;
+                    // Use fail count to run at least this state 3 times before move to next state to have stable sensor reading
                     if (vehicle_list.safe_to_turn(false,true) && fail_count >= 3){
                         std::cout << "FSM: Safe to turn left" << std::endl;
                         ego_state = 3;
@@ -627,12 +628,13 @@ int main() {
                     }
                     else{
                         // stay in this state
-                        // Set time if timer expired change the change lane fail and jump back to state 0
+                        // And increase fail count
                         ego_state = 1;
                         fail_count += 1;
                         
                         if (fail_count > 10 ){
                             if (fail_count > 20){
+                            // If fail too much jump back to state 0 to restart
                                 ego_state = 0;
                             }
                         }
@@ -642,8 +644,7 @@ int main() {
                 // Prepare for lane change right
                 case 2:
                     std::cout << "FSM: Prepare for lane change Right   Fail count:"<< fail_count << std::endl;
-                    // check if the future position is still vaild for lane change on the right
-                    // and compare to the cost of distance to the front car
+                    // check if the future position is still safe for lane change on the right
                     if (vehicle_list.safe_to_turn(true,true) && fail_count >=3){
                         std::cout << "FSM: Safe to turn right" << std::endl;
                         ego_state = 4;
@@ -653,7 +654,7 @@ int main() {
                     }
                     else{
                         // stay in this state
-                        // Set time if timer expired change the change lane fail and jump back to state 0
+                        // And increase fail count
                         ego_state = 2;
                         fail_count += 1;
                         
@@ -664,21 +665,21 @@ int main() {
                         
                     }
                     break;
-                // Lane chagne to left
+                // Lane change to left
                 case 3:
                     if (car_d < (2+4*target_lane+1) && car_d > (2+4*(target_lane)-1)) {
                         ego_state = 0;
                         std::cout << "FSM: ***"<<std::endl<<"Lane shift done"<<std::endl;
                         fail_count = 0;
                     }
-                    // if lane change is not finished,
+                    // Set lane change action and change the ego_lane to target change lane. Only run once
                     if (!lane_change_set) {
                         vehicle_list.ego_lane -= 1;
                         lane_change_set = true;
                     }
                 
                     break;
-                // Lane chagne to right
+                // Lane change to right
                 case 4:
                     if (car_d < (2+4*target_lane+1) && car_d > (2+4*(target_lane)-1) ) {
                         ego_state = 0;
